@@ -14,7 +14,9 @@ app = FastAPI(
 )
 
 # ---------------------------------------------------------------------------
-# CORS — allow the local Next.js dev server on port 3000
+# CORS
+# The browser always calls the backend via the HOST-mapped port (localhost:8000),
+# so we only need to allow the Next.js dev origin here.
 # ---------------------------------------------------------------------------
 origins = [
     "http://localhost:3000",
@@ -36,7 +38,7 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 # ---------------------------------------------------------------------------
-# Root health-check
+# Root & health-check
 # ---------------------------------------------------------------------------
 @app.get("/", tags=["Health"])
 async def root():
@@ -45,4 +47,4 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "service": settings.PROJECT_NAME}

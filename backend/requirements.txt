@@ -1,6 +1,6 @@
 # Web framework & ASGI server
 fastapi>=0.111.0
-uvicorn[standard]>=0.29.0          # [standard] pulls in watchfiles for --reload
+uvicorn[standard]>=0.29.0      # [standard] pulls in watchfiles for --reload
 
 # Database
 sqlalchemy>=2.0.30

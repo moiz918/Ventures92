@@ -1,16 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Proxy /api/* from the Next.js dev server straight to FastAPI.
-  // This lets browser fetch calls use relative URLs (/api/v1/...) and
-  // avoids CORS issues for client-side requests during development.
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:8000/api/:path*",
-      },
-    ];
-  },
+  // In Docker, browser requests still hit the host-mapped port (localhost:8000)
+  // so no proxy rewrite is needed. Server-side fetch calls use INTERNAL_API_URL
+  // (http://backend:8000) via the Docker network — set that in your fetch helpers.
+
+  // Required for Next.js to trust the reverse-proxy headers in production.
+  // Harmless in development.
+  poweredByHeader: false,
 };
 
 module.exports = nextConfig;
