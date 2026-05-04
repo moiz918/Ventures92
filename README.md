@@ -1,99 +1,143 @@
-# 🏢 Ventures92 — Real Estate Portfolio Portal
+# Ventures 92 — Monorepo Setup
 
-A professional web application built for **Web Ventures 92** to showcase their commercial and residential real estate projects. The platform serves as a modern portfolio portal where potential clients can explore property listings through a clean, responsive interface.
-
----
-
-## 📖 About the Project
-
-Ventures92 is a client-facing real estate portfolio portal developed using **Next.js** and **React**. It focuses on delivering a polished UI/UX experience with fast performance and seamless navigation across property listings — optimized for both desktop and mobile users.
+High-end integrated real estate portfolio portal.
+**Stack:** Next.js (App Router) · FastAPI · PostgreSQL · SQLAlchemy · Alembic
 
 ---
 
-## ✨ Features
-
-- 🏠 **Property Showcasing** — Dedicated sections for residential and commercial real estate projects
-- 📱 **Responsive Design** — Fully optimized for desktop, tablet, and mobile viewing
-- 🔀 **Dynamic Routing** — Next.js file-based routing for seamless navigation between project detail pages
-- ⚡ **Fast Performance** — Server-side rendering and static generation via Next.js for optimal load times
-- 🎨 **Modern UI/UX** — Clean, professional design tailored for real estate clientele
-
----
-
-## ⚙️ Tech Stack
-
-| Technology | Usage |
-|---|---|
-| **Next.js** | Framework — SSR, routing, and build optimization |
-| **React** | UI component library |
-| **Tailwind CSS** | Utility-first styling |
-| **Vercel** | Deployment and hosting |
-
----
-
-## 📁 Project Structure
+## Repository Structure
 
 ```
 ventures92/
-├── app/                  # Next.js app directory
-│   ├── page.jsx          # Home page
-│   ├── layout.jsx        # Root layout
-│   └── projects/         # Dynamic project routes
-│       └── [id]/
-│           └── page.jsx
-├── components/           # Reusable UI components
-├── public/               # Static assets (images, icons)
-├── styles/               # Global styles
-├── tailwind.config.js    # Tailwind configuration
-├── next.config.js        # Next.js configuration
+├── backend/                     # FastAPI Python project
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── v1/
+│   │   │       ├── __init__.py
+│   │   │       └── router.py    # Add feature routers here
+│   │   ├── core/
+│   │   │   └── config.py        # Pydantic settings (reads .env)
+│   │   ├── db/
+│   │   │   └── session.py       # SQLAlchemy engine + get_db()
+│   │   └── models/              # SQLAlchemy ORM models go here
+│   ├── alembic/
+│   │   ├── versions/            # Auto-generated migration files
+│   │   └── env.py
+│   ├── main.py                  # App entry-point + CORS config
+│   ├── alembic.ini
+│   ├── requirements.txt
+│   └── .env.template            # Copy → .env and fill in values
+│
+├── frontend/                    # Next.js 14 App Router project
+│   ├── app/
+│   │   ├── (public)/            # Public-facing portal routes
+│   │   │   └── listings/
+│   │   └── (admin)/             # Admin dashboard routes
+│   │       └── dashboard/
+│   ├── components/
+│   │   └── ui/                  # Shared UI primitives
+│   ├── lib/                     # Utilities, API helpers
+│   ├── next.config.js           # API proxy rewrites → FastAPI
+│   └── .env.local.template      # Copy → .env.local and fill in
+│
+├── .gitignore
 └── README.md
 ```
 
 ---
 
-## 🚀 Setup & Installation
+## 1 · One-time Setup
 
-### Prerequisites
-- Node.js v18+
-- npm or yarn
-
-### Install Dependencies
-
+### 1a — Create the PostgreSQL database
 ```bash
-npm install
+psql -U postgres -c "CREATE DATABASE ventures92;"
 ```
 
-### Run Development Server
-
+### 1b — Bootstrap the backend
 ```bash
+cd backend
+
+# Create and activate virtual environment
+python -m venv .venv
+# macOS / Linux:
+source .venv/bin/activate
+# Windows (PowerShell):
+# .venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create your real .env from the template
+cp .env.template .env
+# Edit .env — set DATABASE_URL with your Postgres credentials
+```
+
+### 1c — Bootstrap the frontend
+```bash
+cd frontend
+
+# Initialise the Next.js app (run once, inside the frontend/ folder)
+npx create-next-app@latest . \
+  --typescript \
+  --tailwind \
+  --eslint \
+  --app \
+  --no-src-dir \
+  --import-alias "@/*"
+
+# Copy env template
+cp .env.local.template .env.local
+```
+
+---
+
+## 2 · Running the Development Servers
+
+Open **two terminals** from the repo root.
+
+**Terminal 1 — FastAPI (with hot reload):**
+```bash
+cd backend
+source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+- Interactive docs: http://localhost:8000/api/docs
+- Health check:     http://localhost:8000/health
+
+**Terminal 2 — Next.js (hot reload is on by default):**
+```bash
+cd frontend
 npm run dev
 ```
+- Portal: http://localhost:3000
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+---
 
-### Build for Production
-
-```bash
-npm run build
-npm start
-```
-
-### Deploy to Vercel
+## 3 · Database Migrations (Alembic)
 
 ```bash
-vercel
+cd backend
+source .venv/bin/activate
+
+# Generate a new migration after editing models/
+alembic revision --autogenerate -m "describe_your_change"
+
+# Apply pending migrations
+alembic upgrade head
+
+# Roll back one step
+alembic downgrade -1
 ```
 
 ---
 
-## 🌐 Live Demo
+## 4 · Key Development Notes
 
-> Add your Vercel deployment link here: `https://ventures92.vercel.app`
-
----
-
-## 👤 Author
-
-**Roll No:** 23L-0527  
-**Section:** BCS-6A  
-**Course:** Web Technologies — FAST-NUCES
+- The `next.config.js` proxy rewrites `/api/*` → `http://localhost:8000/api/*`
+  so client-side fetches can use relative URLs and bypass browser CORS entirely.
+- `uvicorn --reload` uses **watchfiles** (bundled with `uvicorn[standard]`) for
+  fast, cross-platform file-change detection — no extra config needed.
+- Add new SQLAlchemy models under `backend/app/models/` and import them in
+  `backend/alembic/env.py` so Alembic's autogenerate can detect schema changes.
+- Feature API routes go in `backend/app/api/v1/` and are registered in
+  `router.py`; include the sub-router there and it flows up to `main.py`.
