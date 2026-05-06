@@ -492,6 +492,10 @@ frontend/
         page.tsx              # Property detail — async RSC, 404 → notFound(), gallery + sidebar
     contact/
       page.tsx                # Lead capture — two-column layout, trust grid, contact details
+    login/
+      page.tsx                # "use client" — split-screen auth, email+password, mock → /dashboard
+    signup/
+      page.tsx                # "use client" — split-screen auth, name+email+password, mock → /dashboard
   components/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
     LeadCaptureForm.tsx       # "use client" — full lead form, focus states, success/error handling
@@ -550,6 +554,21 @@ frontend/
   inactive = 60% opacity; transitions on `opacity` and `border-color`.
 - `NavButton`: absolute-positioned prev/next arrows; disabled state uses muted colour + dimmed bg.
 - **Empty state**: per-category dark gradient placeholder (matches `PropertyCard`) + faint SVG watermark.
+
+### Auth Pages — `app/login/page.tsx` + `app/signup/page.tsx`
+
+Both pages share an identical split-screen layout pattern:
+
+- **`"use client"`** — require `useRouter` for post-submit redirect.
+- **Layout**: `min-height: calc(100vh - 64px)` dark base (`#100e08`), architectural 72px grid overlay.
+- **Left panel** (`hidden lg:flex`): gold radial gradient glow, `flex: 1`, `border-right: 1px solid #2d2a23`. Contains logo, headline copy in Epilogue 800, descriptive text, and a bottom "Secure Authentication" trust line with shield SVG. Hidden below `lg` breakpoint.
+- **Right panel** (`max-width: 520px` login / `540px` signup): `backgroundColor: #16130d`, centered flex column, `padding: 48px 56px`. Contains mobile logo (hidden `lg:`), form header, the form, and a bottom "Secure Authentication" footer.
+- **Input style**: `backgroundColor: '#100e08'` (darker than global surface), `border: 1px solid #4d4637` → `#C9A84C` on focus. Icon slot `paddingLeft: 42px` for mail/lock SVGs; icon color transitions `#4d4637` → `#C9A84C` on focus.
+- **Password field**: `type` toggles `"password"` / `"text"` via `showPassword` state; EyeIcon / EyeOffIcon button absolutely positioned at right.
+- **Mock submit**: `setTimeout(700ms)` then `router.push('/dashboard')`. Replace with real auth call when backend is ready.
+- **Login extras**: "Forgot password?" link aligned right of label; divider + "Create an Account" ghost button below form; link to `/signup`.
+- **Signup extras**: name fields in 2-col grid; password hint text; custom styled checkbox for terms agreement; link to `/login`.
+- **No real auth logic** — state is ephemeral, no tokens stored. Auth implementation is a future phase.
 
 ### Contact / Lead Capture — `app/contact/page.tsx`
 
