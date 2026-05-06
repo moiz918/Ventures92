@@ -484,8 +484,12 @@ Change any of these in the root `.env` file before running `docker-compose up`.
 frontend/
   app/
     globals.css               # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
-    layout.tsx                # Root layout — Navbar + Footer (Server Components)
+    layout.tsx                # Root layout — Navbar + Footer + WhatsApp FAB (Server Components)
     page.tsx                  # Homepage — async RSC, fetches featured properties, three render states
+    (admin)/
+      layout.tsx              # Admin route group layout — sticky sidebar + header, no URL change
+      dashboard/
+        page.tsx              # Lead Management Pipeline — embeds LeadKanban
     properties/
       page.tsx                # Property search — async RSC, URL-driven filters + pagination
       [slug]/
@@ -502,9 +506,11 @@ frontend/
     PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
     PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav
     SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/price); useRouter push
+    admin/
+      LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
   services/
     api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
-    leadService.ts            # submitLead() + LeadCreatePayload interface
+    leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
     propertyService.ts        # getProperties(), getPropertyBySlug() + all TS interfaces
 ```
 
@@ -592,8 +598,46 @@ Both pages share an identical split-screen layout pattern:
 #### `services/leadService.ts`
 
 - `LeadCreatePayload`: `first_name`, `last_name`, `email`, `phone`, `preferred_property_type` (RESIDENTIAL | COMMERCIAL), optional `min_budget`, `max_budget`, `message`.
+- `LeadResponse`: full lead object with `id`, `status` (`NEW | CONTACTED | QUALIFIED | CLOSED`), `assigned_agent_id`, `created_at`, `updated_at`.
 - `submitLead(data)`: `api.post<unknown>('/leads/', data)` — returns `void`, throws `ApiError` on failure.
+- `getLeads()`: `api.get<LeadResponse[]>('/leads/')` — admin only.
+- `updateLeadStatus(id, status)`: `api.put<LeadResponse>('/leads/{id}/status', { status })` — admin only.
 - **IMPORTANT**: always use `first_name` + `last_name` — never `full_name` (backend schema constraint).
+
+### Admin Core — `app/(admin)/`
+
+The `(admin)` route group wraps all admin pages with a shared sidebar + header layout. It renders **inside** the root layout's `<main className="flex-1 pt-16">`, so the fixed navbar is still present above.
+
+#### `app/(admin)/layout.tsx`
+
+- **Sidebar** (`position: sticky; top: 0; height: calc(100vh - 64px)`): `width: 240px`, `backgroundColor: #100e08`, `border-right: 1px solid #4d4637`.
+- Nav items: Dashboard · Properties · Projects · Settings — each as `<Link>` with SVG icon + uppercase Manrope label.
+- Active item styling: `color: #C9A84C`, `border-left: 4px solid #C9A84C` (applied via `admin-nav-link` class + JS, or manually via `usePathname` in a client wrapper).
+- Sidebar footer: "← Back to Site" link → `/`.
+- **Admin header** (`height: 56px`, `backgroundColor: #1e1b15`, `border-bottom: 1px solid #4d4637`): shows admin avatar placeholder + "Logout" outlined button → `/login`.
+- Main content area: `flex: 1`, `backgroundColor: #16130d`, `overflowY: auto`.
+
+#### `components/admin/LeadKanban.tsx` (`"use client"`)
+
+- Fetches all leads via `getLeads()` on mount; stores in `useState<LeadResponse[]>`.
+- **4 columns** matching backend `LeadStatus` enum, each with a distinct accent colour:
+  | Status | Label | Accent |
+  |---|---|---|
+  | `NEW` | New | `#99907e` |
+  | `CONTACTED` | Contacted | `#C9A84C` |
+  | `QUALIFIED` | Qualified | `#1D9E75` |
+  | `CLOSED` | Closed | `#4d4637` |
+- Each column header: `border-top: 3px solid {accent}`, label + count badge.
+- **Lead card**: `backgroundColor: #1e1b15`, `border-left: 3px solid {accent}`. Shows name, time ago, property type badge, email, phone, budget range (formatted PKR), message snippet.
+- **Status move buttons** at card bottom: only valid next-status transitions shown (e.g. NEW can only go to CONTACTED). Styled as outlined buttons in the target column's accent colour.
+- **Optimistic update**: immediately updates local state on click, calls `updateLeadStatus`, reverts if API errors.
+- `movingId` state dims the card being moved (`opacity: 0.5`) during the API call.
+- Loading state: skeleton columns at 40% opacity with CSS pulse animation.
+- Error state: inline muted error card.
+
+#### `app/(admin)/dashboard/page.tsx`
+
+- Server Component; renders a page header ("CRM" eyebrow + "Lead Management Pipeline" H1) then `<LeadKanban />`.
 
 ### Homepage — `app/page.tsx`
 
