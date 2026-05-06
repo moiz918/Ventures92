@@ -9,7 +9,7 @@ developing the Ventures 92 Docker-based development environment.
 
 | Layer      | Technology                  | Host Port |
 |------------|-----------------------------|-----------|
-| Frontend   | Next.js 14 (App Router)     | 3000      |
+| Frontend   | Next.js 16 (App Router)     | 3000      |
 | Backend    | FastAPI + Uvicorn           | 8000      |
 | Database   | PostgreSQL 16               | 5432      |
 | DB Admin   | pgAdmin 4                   | 5050      |
@@ -456,3 +456,127 @@ docker-compose down -v --remove-orphans && docker-compose up --build
 | `PGADMIN_PASSWORD`  | `pgadmin_pass`           | pgadmin                  |
 
 Change any of these in the root `.env` file before running `docker-compose up`.
+
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` | frontend (browser) |
+
+> For server-side Next.js fetches inside the Docker network, set
+> `API_URL=http://backend:8000/api/v1` in the frontend service environment.
+
+---
+
+## Frontend — Architecture
+
+### Versions
+
+| Package      | Version  | Notes                                              |
+|--------------|----------|----------------------------------------------------|
+| Next.js      | 16.2.4   | App Router · breaking changes vs. 14/15 — read AGENTS.md |
+| React        | 19.2.4   |                                                    |
+| Tailwind CSS | 4.x      | CSS-first — **no `tailwind.config.ts`**            |
+
+> **Before writing any Next.js/React code**, read `frontend/AGENTS.md`.
+> Next.js 16 has breaking API changes. `params` and `searchParams` are
+> async Promises in page components.
+
+### Directory layout
+
+```
+frontend/
+  app/
+    globals.css          # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
+    layout.tsx           # Root layout — Navbar + Footer (Server Components)
+    page.tsx             # Homepage (to be built)
+  services/
+    api.ts               # Fetch client — api.get/post/put/delete, ApiError class
+    propertyService.ts   # getProperties(), getPropertyBySlug() + all TS interfaces
+```
+
+### Design System — "Architectural Prestige"
+
+Source: **Stitch MCP** → project `8267215256843583173` ("Ventures 92 Design System")  
+DO NOT hardcode colors or fonts that are not in the table below.
+
+#### Color tokens (defined in `globals.css` `@theme`)
+
+| Token                    | Hex       | Usage                              |
+|--------------------------|-----------|------------------------------------|
+| `--color-surface`        | `#16130d` | Page background                    |
+| `--color-surface-low`    | `#1e1b15` | Alternate section bg               |
+| `--color-surface-section`| `#221f19` | Section containers                 |
+| `--color-surface-card`   | `#2d2a23` | Property / content cards           |
+| `--color-surface-high`   | `#38342d` | Elevated cards, dropdowns          |
+| `--color-gold`           | `#C9A84C` | Primary brand — CTAs, badges, logo |
+| `--color-gold-bright`    | `#e6c364` | Highlight / active states          |
+| `--color-gold-hover`     | `#E2C87A` | Button hover                       |
+| `--color-charcoal`       | `#1A1A1A` | Text on gold buttons               |
+| `--color-on-surface`     | `#e9e1d7` | Primary body text                  |
+| `--color-on-surface-muted`| `#d0c5b2`| Secondary / helper text            |
+| `--color-outline`        | `#99907e` | Borders, dividers                  |
+| `--color-outline-variant`| `#4d4637` | Subtle borders                     |
+| `--color-success`        | `#1D9E75` | READY TO POSSESS badge             |
+| `--color-warning`        | `#E8A020` | UNDER CONSTRUCTION badge           |
+| `--color-warm-white`     | `#F7F5F0` | Admin dashboard backgrounds        |
+
+#### Typography
+
+| Role            | Font          | Size  | Weight | Tracking  |
+|-----------------|---------------|-------|--------|-----------|
+| Display hero    | Epilogue      | 80px  | 800    | −0.04em   |
+| H1              | Epilogue      | 48px  | 700    | −0.02em   |
+| H2              | Epilogue      | 32px  | 700    | −0.01em   |
+| Body / UI       | Manrope       | 16px  | 400    | 0em       |
+| Price / data    | Space Grotesk | 18px  | 500    | +0.02em   |
+| Label caps      | Manrope       | 12px  | 700    | +0.1em    |
+
+Fonts are loaded in `app/layout.tsx` via `next/font/google` and exposed as CSS
+variables: `--font-epilogue`, `--font-manrope`, `--font-space-grotesk`.
+Use these variables directly — never import a font elsewhere.
+
+#### Shape language
+
+**0 px border-radius everywhere.** Circles (`rounded-full`) are permitted only
+for icon containers and avatars. This is enforced by `* { border-radius: 0 }`
+in `@layer base`.
+
+#### Key component specs
+
+| Component       | Spec                                                                 |
+|-----------------|----------------------------------------------------------------------|
+| Navbar          | Fixed, `backdrop-blur(20px)`, `rgba(255,255,255,0.10)` bg, gold border-bottom |
+| Primary button  | `bg-gold text-charcoal` · all-caps Manrope · 0px radius             |
+| Secondary button| Transparent + 2px gold border                                        |
+| Property card   | `bg-surface-card` · PKR price in Space Grotesk bottom-left of image  |
+| Input           | `bg-surface-section` border `outline-variant` · label always uppercase Manrope |
+| Admin sidebar   | 240px wide, `bg-surface`, active item = 4px gold left-border + gold text |
+
+### Tailwind v4 conventions (MUST follow)
+
+- **No `tailwind.config.ts`** — configuration lives entirely in `globals.css`.
+- Add new design tokens to the `@theme` block in `globals.css`.
+- Tailwind generates utilities automatically from `@theme`:
+  `--color-gold` → `bg-gold`, `text-gold`, `border-gold`
+  `--font-heading` → `font-heading`
+- For hover effects in Server Components, use Tailwind `hover:` classes — never
+  `onMouseOver`/`onMouseOut` event handlers.
+- Prefer Server Components (no `"use client"`). Only add `"use client"` when
+  the component requires `useState`, `useEffect`, browser APIs, or event handlers.
+
+### Service layer conventions
+
+- All backend calls go through `services/api.ts` (`api.get / post / put / delete`).
+- Create `services/<resource>Service.ts` for each domain (properties, projects, leads, etc.).
+- Monetary / area values from the backend are `string` (Decimal) — never cast to `number`.
+- `ApiError` (from `services/api.ts`) carries `.status` — catch it to show 404 vs 500 UI.
+- For server-side data fetching in Server Components, call service functions directly
+  (they use `fetch` internally). For client-side, wrap in a `useEffect` or SWR/React Query.
+
+### Stitch MCP — Screen inventory
+
+| Project ID           | Title                          | Key screens                          |
+|----------------------|--------------------------------|--------------------------------------|
+| `12841052455491568048` | Ventures 92 Real Estate Portal | 5. Homepage · 8/9. Property Detail · 11/12. Client Requirements · 15. Admin Dashboard · 16. Priority Lead Inbox · 18. Live Inventory |
+| `8313867810962667973`  | Ventures 92 Property Portal    | Screen 1: Homepage · Screen 3: Property Details · Screen 12: Admin Dashboard |
+| `8267215256843583173`  | Ventures 92 Design System      | "Architectural Prestige" — source of all tokens |
+
+Always query the Stitch MCP before adding new screens to verify colors, spacing,
+and component structure against the design.

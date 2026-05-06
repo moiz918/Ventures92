@@ -1,26 +1,108 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Architectural Prestige — Design Tokens ───────────────────────────────
+   Source: Stitch MCP "Ventures 92 Design System" (project 8267215256843583173)
+   DO NOT edit token values here without updating the Stitch design system.
+──────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Backgrounds — dark tonal layers */
+  --color-surface:           #16130d;
+  --color-surface-lowest:    #100e08;
+  --color-surface-low:       #1e1b15;
+  --color-surface-section:   #221f19;
+  --color-surface-card:      #2d2a23;
+  --color-surface-high:      #38342d;
+
+  /* Brand gold */
+  --color-gold:              #C9A84C;
+  --color-gold-bright:       #e6c364;
+  --color-gold-hover:        #E2C87A;
+  --color-gold-muted:        rgba(201, 168, 76, 0.25);
+
+  /* Charcoal (text on gold) */
+  --color-charcoal:          #1A1A1A;
+
+  /* Text */
+  --color-on-surface:        #e9e1d7;
+  --color-on-surface-muted:  #d0c5b2;
+
+  /* Borders */
+  --color-outline:           #99907e;
+  --color-outline-variant:   #4d4637;
+
+  /* Functional */
+  --color-success:           #1D9E75;
+  --color-warning:           #E8A020;
+  --color-danger:            #ff4444;
+  --color-muted-badge:       #3A3A3A;
+
+  /* Admin warm white */
+  --color-warm-white:        #F7F5F0;
+
+  /* Fonts */
+  --font-heading:            var(--font-epilogue), 'Epilogue', sans-serif;
+  --font-body:               var(--font-manrope), 'Manrope', sans-serif;
+  --font-data:               var(--font-space-grotesk), 'Space Grotesk', monospace;
+
+  /* Typography scale */
+  --text-display:            80px;
+  --text-h1:                 48px;
+  --text-h2:                 32px;
+  --text-body:               16px;
+  --text-price:              18px;
+  --text-label:              12px;
+
+  /* Border radius — sharp architecture. All UI elements are 0px. */
+  --radius:                  0px;
+  --radius-sm:               0px;
+  --radius-md:               0px;
+  --radius-lg:               0px;
+  --radius-xl:               0px;
+  --radius-2xl:              0px;
+  --radius-full:             9999px; /* permitted only for icon circles/avatars */
+
+  /* Spacing — 8px modular scale */
+  --spacing-unit:            8px;
+  --spacing-gutter:          24px;
+  --spacing-margin:          64px;
+  --spacing-section:         80px;
+  --spacing-section-lg:      120px;
+  --spacing-sidebar:         240px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ─── Base styles ──────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    background-color: #16130d;
+    color: #e9e1d7;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "kern" 1, "liga" 1;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    font-family: var(--font-manrope), 'Manrope', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    background-color: #16130d;
+    color: #e9e1d7;
+    min-height: 100dvh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-epilogue), 'Epilogue', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  /* Global sharp corners — mirrors the 0px radius shape language */
+  * {
+    border-radius: 0;
+  }
+  /* Restore full circles only where explicitly set */
+  .rounded-full {
+    border-radius: 9999px;
+  }
 }
