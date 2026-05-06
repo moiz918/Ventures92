@@ -90,3 +90,33 @@ export async function getProperties(params?: PropertyListParams): Promise<Proper
 export async function getPropertyBySlug(slug: string): Promise<PropertyDetail> {
   return api.get<PropertyDetail>(`/properties/${encodeURIComponent(slug)}`);
 }
+
+// ── Admin mutations ────────────────────────────────────────────────────────
+
+export interface PropertyCreatePayload {
+  title: string;
+  slug?: string;
+  description?: string;
+  property_type: PropertyType;
+  property_category: PropertyCategory;
+  /** Decimal string — e.g. "7500000" */
+  price: string;
+  /** Decimal string */
+  area_sqft?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  floors?: number;
+  availability_status: AvailabilityStatus;
+  is_featured: boolean;
+  project_id?: string;
+  /** UUIDs from GET /amenities/ */
+  amenity_ids?: string[];
+}
+
+export async function createProperty(data: PropertyCreatePayload): Promise<Property> {
+  return api.post<Property>('/properties/', data);
+}
+
+export async function deleteProperty(id: string): Promise<void> {
+  await api.delete<unknown>(`/properties/${id}`);
+}

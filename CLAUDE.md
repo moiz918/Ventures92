@@ -490,6 +490,8 @@ frontend/
       layout.tsx              # Admin route group layout — sticky sidebar + header, no URL change
       dashboard/
         page.tsx              # Lead Management Pipeline — embeds LeadKanban
+      properties/
+        page.tsx              # "use client" — property data table, Add New + Delete with confirm
     properties/
       page.tsx                # Property search — async RSC, URL-driven filters + pagination
       [slug]/
@@ -508,10 +510,11 @@ frontend/
     SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/price); useRouter push
     admin/
       LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
+      PropertyForm.tsx        # "use client" — right-side slide-over, 3-section form, createProperty()
   services/
     api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
     leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
-    propertyService.ts        # getProperties(), getPropertyBySlug() + all TS interfaces
+    propertyService.ts        # getProperties(), getPropertyBySlug(), createProperty(), deleteProperty() + all TS interfaces
 ```
 
 ### Properties Search — `app/properties/page.tsx`
@@ -638,6 +641,40 @@ The `(admin)` route group wraps all admin pages with a shared sidebar + header l
 #### `app/(admin)/dashboard/page.tsx`
 
 - Server Component; renders a page header ("CRM" eyebrow + "Lead Management Pipeline" H1) then `<LeadKanban />`.
+
+### Admin Property Management — `app/(admin)/properties/`
+
+#### `app/(admin)/properties/page.tsx` (`"use client"`)
+
+- Fetches all properties via `getProperties({ limit: 100 })` on mount.
+- **Stat row**: 4 `StatCard` cells — All Listings / Available / Reserved / Sold (Space Grotesk gold values).
+- **Data table**: CSS Grid `2fr 1fr 1fr 1fr 1fr` columns: Property (title + /slug), Type + Category, Price (Space Grotesk gold), Status badge, Actions.
+- Header row: `backgroundColor: #100e08`, `border-bottom: 2px solid #4d4637`, Manrope 10px uppercase `#4d4637` labels.
+- Rows: `backgroundColor: #1e1b15`, `border-bottom: 1px solid #4d4637`, hover `#2d2a23` via `.table-row-hover` class in `globals.css`.
+- Status badges: AVAILABLE=gold, RESERVED=amber (`#E8A020`), SOLD=muted (`#4d4637`) — outlined, no fill.
+- **Delete flow**: Click "Delete" → sets `confirmDeleteId`. Row shows "Confirm" + "Cancel" buttons. "Confirm" calls `deleteProperty(id)` with optimistic removal. Dim row with opacity 0.4 + `deletingId` state during API call.
+- **Add New Property** button (gold fill) opens `<PropertyForm>` slide-over. `onSuccess` prepends the new property to local state.
+- `<TableSkeleton />`: 5 skeleton rows at 0.4 opacity with CSS pulse animation (shared `@keyframes pulse` in `globals.css`).
+
+#### `components/admin/PropertyForm.tsx` (`"use client"`)
+
+- Right-side slide-over panel: `position: fixed; right: 0; height: 100vh; width: 600px; background: #16130d; border-left: 1px solid #4d4637; z-index: 200`. Dark backdrop click closes panel.
+- Panel header: "Admin" eyebrow (gold) + "Add New Property" title + X close button.
+- **Section 1 — Basic Info**: title (required), description (textarea, 4 rows), price (PKR, required), area_sqft — 2-col grid; bedrooms + bathrooms + floors — 3-col grid.
+- **Section 2 — Classification**: property_type select (RESIDENTIAL / COMMERCIAL), property_category select (APARTMENT / HOUSE / PLOT / OFFICE / SHOP) — 2-col grid; availability_status select full-width.
+- **Section 3 — Features & Amenities**: `ToggleRow` for `is_featured` (slide toggle pill, gold when active); 3-col grid of 12 amenity name checkboxes (Swimming Pool, Gymnasium, Parking, etc.) — visual only, not yet wired to `amenity_ids` UUIDs.
+- `SectionHeading`: gold 10px uppercase label + flex-1 `#4d4637` divider line.
+- `inputStyle(focused: boolean)`: `background: #100e08; border: 1px solid {focused ? #C9A84C : #4d4637}; color: #e9e1d7; padding: 12px 14px`.
+- All `<select>` elements use `appearance: none` + absolute `ChevronIcon` overlay.
+- Submit: builds `PropertyCreatePayload`, calls `createProperty()`. ApiError 422 → "check details" message, else generic. `isSubmitting` → dims form to 0.7 opacity, gold → muted button bg, spinner SVG.
+- Panel footer: sticky Cancel (muted outline) + Publish Property (gold fill) buttons.
+
+#### Additions to `services/propertyService.ts`
+
+- `PropertyCreatePayload`: title, slug?, description?, property_type, property_category, price (Decimal string), area_sqft?, bedrooms?, bathrooms?, floors?, availability_status, is_featured, project_id?, amenity_ids?.
+- `createProperty(data)`: `api.post<Property>('/properties/', data)`.
+- `deleteProperty(id: string)`: `api.delete<unknown>('/properties/{id}')` — returns void.
+- **Note**: `amenity_ids` requires UUIDs from `GET /amenities/` (not yet implemented as a separate endpoint). The form captures amenity names as a visual selection only.
 
 ### Homepage — `app/page.tsx`
 

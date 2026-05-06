@@ -105,4 +105,20 @@
   .rounded-full {
     border-radius: 9999px;
   }
+
+  /* Admin table row hover */
+  .table-row-hover:hover {
+    background-color: #2d2a23 !important;
+  }
+}
+
+/* ─── Animations ────────────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.7; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
