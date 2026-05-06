@@ -254,8 +254,56 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/ping` | Liveness check |
-| `GET` | `/api/v1/properties/` | List all properties |
-| `GET` | `/api/v1/properties/{slug}` | Single property by slug |
+| **Properties** | | |
+| `GET` | `/api/v1/properties/` | Search properties (8 optional filters + pagination) |
+| `GET` | `/api/v1/properties/{slug}` | Property detail — eager-loads media + amenities |
+| `POST` | `/api/v1/properties/` | [Admin] Create property |
+| `PUT` | `/api/v1/properties/{id}` | [Admin] Partial update (toggle status, price, etc.) |
+| `DELETE` | `/api/v1/properties/{id}` | [Admin] Delete property |
+| **Projects** | | |
+| `GET` | `/api/v1/projects/` | List projects (optional `status` filter) |
+| `GET` | `/api/v1/projects/{slug}` | Project detail — includes milestones ordered by date |
+| `GET` | `/api/v1/projects/{slug}/properties` | All properties under a project |
+| `POST` | `/api/v1/projects/{id}/milestones` | [Admin] Log a construction milestone |
+| **Leads (CRM)** | | |
+| `POST` | `/api/v1/leads/` | Public enquiry / client requirements form |
+| `GET` | `/api/v1/leads/` | [Admin] List leads — filters: `status`, `assigned_agent_id` |
+| `PUT` | `/api/v1/leads/{id}/status` | [Admin] Update pipeline status + assign agent |
+| `POST` | `/api/v1/leads/{id}/interactions` | [Admin/Agent] Log CRM note / call / meeting |
+| **Site Settings** | | |
+| `GET` | `/api/v1/settings/` | Fetch all site settings (WhatsApp/call numbers, etc.) |
+| `PUT` | `/api/v1/settings/{key}` | [Admin] Update a setting value by key |
+| **Corporate Partners** | | |
+| `GET` | `/api/v1/partners/` | Active partners ordered by `display_order` (carousel) |
+| `POST` | `/api/v1/partners/` | [Admin] Add a partner |
+| `PUT` | `/api/v1/partners/{id}` | [Admin] Update partner / toggle active |
+| `DELETE` | `/api/v1/partners/{id}` | [Admin] Remove a partner |
+| **Locations** | | |
+| `GET` | `/api/v1/locations/` | All cities + societies for search dropdowns |
+
+### Query parameters — `GET /api/v1/properties/`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `property_type` | enum | `RESIDENTIAL` \| `COMMERCIAL` |
+| `property_category` | enum | `PLOT` \| `HOUSE` \| `APARTMENT` \| `OFFICE` \| `SHOP` |
+| `location_id` | UUID | Joins through `Project` — filters by `projects.location_id` |
+| `min_price` | Decimal | Inclusive lower price bound |
+| `max_price` | Decimal | Inclusive upper price bound |
+| `availability_status` | enum | `AVAILABLE` \| `RESERVED` \| `SOLD` |
+| `is_featured` | bool | `true` / `false` |
+| `limit` | int | Default 20, max 100 |
+| `offset` | int | Default 0 |
+
+### Schemas added in Step 2
+
+| File | Classes |
+|---|---|
+| `schemas/setting.py` | `SettingResponse`, `SettingUpdate` |
+| `schemas/partner.py` | `PartnerBase`, `PartnerCreate`, `PartnerUpdate`, `PartnerResponse` |
+| `schemas/location.py` | `LocationResponse` |
+| `schemas/project.py` | *(inline in endpoint)* `MilestoneCreate`, `MilestoneResponse`, `ProjectDetailResponse` |
+| `schemas/lead.py` | *(inline in endpoint)* `LeadStatusUpdate`, `InteractionCreate`, `InteractionResponse`, `LeadDetailResponse` |
 
 ### Conventions (MUST follow when adding endpoints)
 
@@ -265,8 +313,12 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 - **Schema file:** create `app/schemas/<resource>.py`. Response schemas use
   `model_config = ConfigDict(from_attributes=True)`.
 - **DB session:** always inject via `db: Session = Depends(get_db)`.
+- **SQLAlchemy 2.0 style:** use `db.scalars(select(Model).where(...)).all()` — never `.query()`.
+- **Eager loading:** use `selectinload` for collections, `joinedload` for single FK rows.
 - **404 pattern:** `raise HTTPException(status_code=404, detail="...")` when
   a `.first()` query returns `None`.
+- **Partial updates:** call `payload.model_dump(exclude_unset=True)` and iterate — never
+  overwrite the whole row.
 
 ### Schema conventions (Pydantic v2)
 
