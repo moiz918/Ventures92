@@ -483,16 +483,21 @@ Change any of these in the root `.env` file before running `docker-compose up`.
 ```
 frontend/
   app/
-    globals.css          # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
-    layout.tsx           # Root layout — Navbar + Footer (Server Components)
-    page.tsx             # Homepage — async RSC, fetches featured properties, three render states
+    globals.css               # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
+    layout.tsx                # Root layout — Navbar + Footer (Server Components)
+    page.tsx                  # Homepage — async RSC, fetches featured properties, three render states
+    properties/
+      page.tsx                # Property search — async RSC, URL-driven filters + pagination
+      [slug]/
+        page.tsx              # Property detail — async RSC, 404 → notFound(), gallery + sidebar
   components/
-    HeroSection.tsx      # Full-viewport hero, architectural gradient, native GET search bar
-    PropertyCard.tsx     # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
-    SearchFilters.tsx    # "use client" — URL-driven filter bar (type/category/price); useRouter push
+    HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
+    PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
+    PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav
+    SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/price); useRouter push
   services/
-    api.ts               # Fetch client — api.get/post/put/delete, ApiError class
-    propertyService.ts   # getProperties(), getPropertyBySlug() + all TS interfaces
+    api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
+    propertyService.ts        # getProperties(), getPropertyBySlug() + all TS interfaces
 ```
 
 ### Properties Search — `app/properties/page.tsx`
@@ -515,6 +520,32 @@ frontend/
 - Shows "N filters active" badge + "Clear Filters" button only when at least one filter is set.
 - Predefined PKR price options (`1 Cr / 5 Cr / 10 Cr / 15 Cr / 50 Cr`) map to raw integer strings
   the backend expects for `min_price` / `max_price`.
+
+### Property Detail — `app/properties/[slug]/page.tsx`
+
+- Async RSC; `params` is `Promise<{ slug: string }>` — always `await` it (Next.js 16).
+- `loadProperty(slug)`: calls `getPropertyBySlug(slug)`. Catches `ApiError` with `.status === 404`
+  and calls `notFound()` — triggers Next.js 404 page cleanly. All other errors propagate.
+- `generateMetadata` shares the same `loadProperty` helper for SEO title + description.
+- **Layout**: breadcrumb bar → two-column grid (`1fr 360px` on desktop, stacked on mobile).
+- **Left column**: `<PropertyGallery>` → badge row + H1 → specs grid → description → amenities pills.
+- **Right sidebar** (`position: sticky; top: 88px`): Asking Price (Space Grotesk gold) → status row →
+  Book Consultation (gold fill) → WhatsApp Us (gold outline) → phone link → Back to Listings.
+- `formatPKR()` converts decimal strings to `"X Crore"` / `"X Lakh"` (full word, not abbreviation).
+- Status colours: AVAILABLE = gold badge, RESERVED = dark amber, SOLD = muted.
+- Inline SVG icons (Bed, Bath, Area, Floors) — no external icon library.
+- Mobile: price shown inline below H1 (hidden on `lg:`); sidebar stacks below gallery column.
+
+#### `components/PropertyGallery.tsx` (`"use client"`)
+
+- Sorts `media[]` by `is_primary` desc then `sort_order` asc before rendering.
+- `useState(0)` for active index; `useCallback` memoises prev/next handlers.
+- **Hero** (16:9): active image + bottom gradient scrim + photo counter bottom-right + "Primary Photo"
+  gold badge top-left when `active.is_primary`.
+- **Thumbnail strip**: `overflowX: auto`, 112×72px buttons; active = 2px gold border + full opacity;
+  inactive = 60% opacity; transitions on `opacity` and `border-color`.
+- `NavButton`: absolute-positioned prev/next arrows; disabled state uses muted colour + dimmed bg.
+- **Empty state**: per-category dark gradient placeholder (matches `PropertyCard`) + faint SVG watermark.
 
 ### Homepage — `app/page.tsx`
 
