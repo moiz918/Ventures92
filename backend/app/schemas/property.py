@@ -5,12 +5,14 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import AreaUnit, AvailabilityStatus
+from app.models.enums import AreaUnit, AvailabilityStatus, PropertyCategory, PropertyType
 
 
 class PropertyBase(BaseModel):
     title: str
     slug: str
+    property_type: PropertyType
+    property_category: PropertyCategory
     price: Decimal
     area_size: Decimal
     area_unit: AreaUnit
@@ -19,7 +21,17 @@ class PropertyBase(BaseModel):
 
 
 class PropertyCreate(PropertyBase):
-    pass
+    """
+    Inherits all PropertyBase fields.  property_type and property_category
+    are now required — they map directly to non-nullable DB columns.
+    Optional fields (description, bedrooms, bathrooms, etc.) can be added
+    here if the admin form exposes them.
+    """
+    description: Optional[str] = None
+    project_id: Optional[uuid.UUID] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[int] = None
+    address_details: Optional[str] = None
 
 
 class PropertyUpdate(BaseModel):
