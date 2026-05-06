@@ -489,10 +489,32 @@ frontend/
   components/
     HeroSection.tsx      # Full-viewport hero, architectural gradient, native GET search bar
     PropertyCard.tsx     # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
+    SearchFilters.tsx    # "use client" — URL-driven filter bar (type/category/price); useRouter push
   services/
     api.ts               # Fetch client — api.get/post/put/delete, ApiError class
     propertyService.ts   # getProperties(), getPropertyBySlug() + all TS interfaces
 ```
+
+### Properties Search — `app/properties/page.tsx`
+
+- Async RSC; `searchParams` is `Promise<Record<...>>` — always `await` it (Next.js 16).
+- **`budget` redirect**: converts hero search shorthand (`u50m`, `50m-150m`, `150m-plus`) to
+  explicit `min_price`/`max_price` params so `SearchFilters` selects stay in sync.
+- Passes cleaned params to `getProperties()` — only sets keys that have a value.
+- Three render states: **property grid** | **EmptyState** (`hasFilters` aware) | **ErrorState**.
+- `SearchFilters` is wrapped in `<Suspense fallback={<FilterBarSkeleton />}>` because it calls
+  `useSearchParams()` — required by Next.js App Router.
+- Filter bar is `position: sticky; top: 64px` — sits below the fixed navbar.
+
+#### `components/SearchFilters.tsx` (`"use client"`)
+
+- Reads current filter values from `useSearchParams()` to keep selects controlled.
+- On any `<select onChange>`, calls `router.push(pathname + '?' + newParams, { scroll: false })`.
+- Always deletes `offset` from params on filter change (resets pagination).
+- `useTransition` wraps each navigation for pending-state opacity fade.
+- Shows "N filters active" badge + "Clear Filters" button only when at least one filter is set.
+- Predefined PKR price options (`1 Cr / 5 Cr / 10 Cr / 15 Cr / 50 Cr`) map to raw integer strings
+  the backend expects for `min_price` / `max_price`.
 
 ### Homepage — `app/page.tsx`
 
