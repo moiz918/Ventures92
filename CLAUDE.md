@@ -159,6 +159,7 @@ correctly through the Docker bind mount on both macOS and Windows/WSL2.
 
 ```
 backend/
+  seed.sql               # Idempotent seed data for all 12 domain tables
   alembic/
     env.py               # Imports Base + all models for autogenerate
     script.py.mako       # Mako template for generated migration files
@@ -180,6 +181,13 @@ backend/
       property.py        # Property, PropertyMedia, Amenity, property_amenities
       lead.py            # Lead, LeadInteraction
       __init__.py        # Imports every model — must stay complete
+    schemas/
+      property.py        # PropertyResponse (Pydantic, from_attributes=True)
+    api/
+      v1/
+        router.py        # api_router — registers all endpoint sub-routers
+        endpoints/
+          properties.py  # GET /properties/, GET /properties/{slug}
 ```
 
 ### SQLAlchemy conventions (MUST follow)
@@ -215,6 +223,47 @@ backend/
 | `property_amenities` | Composite PK `(property_id, amenity_id)`, both CASCADE |
 | `leads` | Two FK refs to `users` (user_id + assigned_agent_id), both SET NULL |
 | `lead_interactions` | FK `agent_id` ON DELETE RESTRICT, no `updated_at` |
+
+---
+
+## Seeding the Database
+
+Run once after `alembic upgrade head` to populate all 12 tables with
+development data. The script is idempotent — safe to re-run.
+
+```bash
+docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
+```
+
+**What is seeded:** 21 users (4 roles), 6 site settings, 6 corporate partners,
+10 locations, 6 projects, 7 milestones, 15 amenities, 13 properties,
+9 property media items, 13 property–amenity links, 6 leads, 5 lead interactions.
+
+> `session_replication_role` is intentionally absent — `ventures_user` is not
+> a superuser. FK insertion order in the script makes it unnecessary.
+
+---
+
+## Backend — API Layer
+
+### Registered routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/ping` | Liveness check |
+| `GET` | `/api/v1/properties/` | List all properties |
+| `GET` | `/api/v1/properties/{slug}` | Single property by slug |
+
+### Conventions (MUST follow when adding endpoints)
+
+- **Router file:** create `app/api/v1/endpoints/<resource>.py`, define
+  `router = APIRouter()`, then register in `app/api/v1/router.py` with
+  `api_router.include_router(router, prefix="/<resource>", tags=["Tag"])`.
+- **Schema file:** create `app/schemas/<resource>.py`. Response schemas use
+  `model_config = ConfigDict(from_attributes=True)`.
+- **DB session:** always inject via `db: Session = Depends(get_db)`.
+- **404 pattern:** `raise HTTPException(status_code=404, detail="...")` when
+  a `.first()` query returns `None`.
 
 ---
 
