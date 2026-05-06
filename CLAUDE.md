@@ -492,6 +492,10 @@ frontend/
         page.tsx              # Lead Management Pipeline — embeds LeadKanban
       properties/
         page.tsx              # "use client" — property data table, Add New + Delete with confirm
+    projects/
+      page.tsx                # Async RSC — "Exclusive Developments" hero, stat strip, 3-col ProjectCard grid
+      [slug]/
+        page.tsx              # Async RSC — project hero, description, MilestoneTimeline, sticky sidebar
     properties/
       page.tsx                # Property search — async RSC, URL-driven filters + pagination
       [slug]/
@@ -511,9 +515,12 @@ frontend/
     admin/
       LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
       PropertyForm.tsx        # "use client" — right-side slide-over, 3-section form, createProperty()
+    ProjectCard.tsx           # Server Component — luxury development card, status badge, gradient placeholder
+    MilestoneTimeline.tsx     # Server Component — vertical timeline, completed/upcoming node states, progress bars
   services/
     api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
     leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
+    projectService.ts         # getProjects(), getProjectBySlug() + Project, ProjectDetail, ProjectMilestone interfaces
     propertyService.ts        # getProperties(), getPropertyBySlug(), createProperty(), deleteProperty() + all TS interfaces
 ```
 
@@ -675,6 +682,60 @@ The `(admin)` route group wraps all admin pages with a shared sidebar + header l
 - `createProperty(data)`: `api.post<Property>('/properties/', data)`.
 - `deleteProperty(id: string)`: `api.delete<unknown>('/properties/{id}')` — returns void.
 - **Note**: `amenity_ids` requires UUIDs from `GET /amenities/` (not yet implemented as a separate endpoint). The form captures amenity names as a visual selection only.
+
+### Projects Portal — `app/projects/`
+
+#### `app/projects/page.tsx`
+
+- Async RSC; fetches `getProjects()` wrapped in `.catch(() => null)` — never throws to the browser.
+- **Hero header**: `#1e1b15` bg + architectural 72px grid overlay + gold left-edge accent. Epilogue 800 headline: "Exclusive / Developments" (second line gold). Subtitle in `#99907e`.
+- **Stat strip**: 4-cell grid (All / Under Construction / Delivered / Upcoming) in Space Grotesk gold values, computed from the project list.
+- **Project grid**: `auto-fill minmax(380px, 1fr)` gap `24px`. Each cell renders a `<ProjectCard>`.
+- **Bottom CTA band**: dark section with "Enquire Now" gold button → `/contact`. Only rendered when projects exist.
+- Empty state: centered bordered card with muted text.
+- Error state: bordered card with "Contact Our Team →" gold link.
+
+#### `app/projects/[slug]/page.tsx`
+
+- Async RSC; `params: Promise<{ slug: string }>` — always `await` it (Next.js 16).
+- `loadProject(slug)`: calls `getProjectBySlug`. Catches `ApiError` 404 → `notFound()`.
+- `generateMetadata` shares the same `loadProject` helper.
+- **Hero banner** (`min-height: 320px`): gradient by status (amber for UNDER_CONSTRUCTION, green for COMPLETED, neutral for PLANNED) + grid overlay + building silhouette + gold left-edge + bottom scrim + overlaid H1 + status badge + location.
+- **Body**: two-column `lg:grid-cols-[1fr_360px]`, sidebar sticky at `top: 88px`.
+- **Left**: "About This Development" section (description) + "Construction Timeline" section (`<MilestoneTimeline>`).
+- **Right sidebar**: status badge card, location InfoRow, progress InfoRow, completion date InfoRow → "Enquire About This Development" gold-fill CTA → "Chat on WhatsApp" gold-outline → "← All Developments" muted back link.
+- `SectionHeading`: gold 10px uppercase + flex-1 `#4d4637` divider (same pattern as contact/property pages).
+- `InfoRow`: label in 10px uppercase `#4d4637` + value in 13px `#d0c5b2`, `border-bottom: 1px solid #4d4637`.
+
+#### `components/ProjectCard.tsx`
+
+- Server Component (no `"use client"`).
+- Props: `{ project: Project }`. Entire card is a `<Link href="/projects/{slug}">`.
+- **Image area** (16:9 aspect ratio): gradient placeholder by status — PLANNED=neutral dark, UNDER_CONSTRUCTION=warm amber-dark, COMPLETED=deep cool green-dark.
+- Overlays: 48px architectural grid, diagonal gold tint, centred SVG building silhouette (watermark), gold left accent bar.
+- **Status badge**: top-left; PLANNED=muted `#99907e`, UNDER_CONSTRUCTION=amber `#E8A020`, COMPLETED=green `#1D9E75`.
+- **Card body**: location eyebrow (uppercase, `#4d4637`) → title (Epilogue 700 17px uppercase) → description snippet (2-line clamp) → footer divider + "View Details →" gold link.
+
+#### `components/MilestoneTimeline.tsx`
+
+- Server Component; accepts `{ milestones: ProjectMilestone[] }`.
+- **Empty state**: bordered dark panel + stacked faded square placeholder nodes + "Development timeline coming soon" text.
+- **Overall progress header**: "X/N Phases Complete" label + master gold gradient progress bar + large percentage.
+- **Milestone nodes**: vertical layout; each has a 20×20px node square + connecting line + date/title/description/progress.
+  - Completed (100%): gold filled node + checkmark + gold line + gold date/percentage.
+  - In progress (1–99%): amber outlined node + step number + amber bar.
+  - Upcoming (0%): muted outlined node + step number + muted `#2d2a23` bar.
+- Progress bar: 3px tall track (`#2d2a23`) + fill (gold at 100%, amber in progress).
+- `formatDate(iso)`: converts ISO string to "15 March 2025" via `toLocaleDateString('en-GB', {...})`.
+
+#### `services/projectService.ts`
+
+- `ProjectStatus`: `'PLANNED' | 'UNDER_CONSTRUCTION' | 'COMPLETED'`
+- `ProjectMilestone`: `{ id, project_id, title, description?, milestone_date, completion_percentage (0-100), created_at }`
+- `Project`: `{ id, slug, title, description?, status, location_id?, location?: ProjectLocation | null, created_at, updated_at }`
+- `ProjectDetail extends Project`: adds `milestones: ProjectMilestone[]`
+- `getProjects(status?)`: `api.get<Project[]>('/projects/?status=...')` — status param optional.
+- `getProjectBySlug(slug)`: `api.get<ProjectDetail>('/projects/{slug}')` — includes milestones ordered by date.
 
 ### Homepage — `app/page.tsx`
 
