@@ -153,6 +153,134 @@ correctly through the Docker bind mount on both macOS and Windows/WSL2.
 
 ---
 
+## Backend — Data Layer Architecture
+
+### Directory layout
+
+```
+backend/
+  seed.sql               # Idempotent seed data for all 12 domain tables
+  alembic/
+    env.py               # Imports Base + all models for autogenerate
+    script.py.mako       # Mako template for generated migration files
+    versions/            # Auto-generated revision files (commit these)
+  app/
+    core/
+      config.py          # Pydantic Settings — reads DATABASE_URL from env
+    db/
+      session.py         # DeclarativeBase, engine, SessionLocal, get_db()
+    models/
+      enums.py           # 10 Python enum.Enum classes (one per PG ENUM type)
+      sa_types.py        # 10 named SAEnum singletons — import these, never
+                         #   re-instantiate Enum() inline to avoid Alembic clashes
+      user.py            # User
+      site_setting.py    # SiteSetting
+      corporate_partner.py  # CorporatePartner
+      location.py        # Location
+      project.py         # Project, ProjectMilestone
+      property.py        # Property, PropertyMedia, Amenity, property_amenities
+      lead.py            # Lead, LeadInteraction
+      __init__.py        # Imports every model — must stay complete
+    schemas/
+      property.py        # PropertyBase, PropertyCreate, PropertyUpdate,
+                         #   PropertyResponse, PropertyDetailResponse
+      project.py         # ProjectBase, ProjectResponse
+      lead.py            # LeadCreate, LeadResponse
+    api/
+      v1/
+        router.py        # api_router — registers all endpoint sub-routers
+        endpoints/
+          properties.py  # GET /properties/, GET /properties/{slug}
+```
+
+### SQLAlchemy conventions (MUST follow)
+
+- **ORM style:** SQLAlchemy 2.0 — `Mapped[T]` + `mapped_column()` everywhere.  
+  Never use the legacy `Column()` style inside model classes.
+- **Base:** `class Base(DeclarativeBase): pass` in `app/db/session.py`.
+- **Primary keys:** `default=uuid.uuid4` (Python-side); no `server_default`.
+- **Timestamps:** `server_default=func.now()` for `created_at`;  
+  `server_default=func.now(), onupdate=func.now()` for `updated_at`.
+- **Enums:** Always import from `app.models.sa_types` (e.g. `sa_user_role`).  
+  Never write `SAEnum(UserRole, name="user_role")` inline — it must be a  
+  single shared object or Alembic will emit duplicate `CREATE TYPE` statements.
+- **Relationships:** Always use `back_populates=`. Use `TYPE_CHECKING` guards  
+  for cross-model imports to prevent circular imports at runtime.
+- **Nullable FKs:** `Mapped[Optional[uuid.UUID]]` + `ondelete="SET NULL"`.
+- **Cascades:** match the SQL schema exactly  
+  (`CASCADE` on child tables, `RESTRICT` on agent references).
+
+### Database schema summary
+
+| Table | Key constraints |
+|---|---|
+| `users` | UNIQUE email, `user_role` ENUM, `ix_users_email` index |
+| `site_settings` | UNIQUE `setting_key`, no `created_at` |
+| `corporate_partners` | `display_order SMALLINT` |
+| `locations` | UNIQUE `(city, region_or_society)` |
+| `projects` | UNIQUE slug, FK `location_id` ON DELETE RESTRICT |
+| `project_milestones` | CHECK `completion_percentage` 0–100, FK CASCADE |
+| `properties` | UNIQUE slug, FK `project_id` ON DELETE SET NULL, 3 indexes |
+| `property_media` | FK CASCADE, `sort_order SMALLINT` |
+| `amenities` | UNIQUE `name` |
+| `property_amenities` | Composite PK `(property_id, amenity_id)`, both CASCADE |
+| `leads` | Two FK refs to `users` (user_id + assigned_agent_id), both SET NULL |
+| `lead_interactions` | FK `agent_id` ON DELETE RESTRICT, no `updated_at` |
+
+---
+
+## Seeding the Database
+
+Run once after `alembic upgrade head` to populate all 12 tables with
+development data. The script is idempotent — safe to re-run.
+
+```bash
+docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
+```
+
+**What is seeded:** 21 users (4 roles), 6 site settings, 6 corporate partners,
+10 locations, 6 projects, 7 milestones, 15 amenities, 13 properties,
+9 property media items, 13 property–amenity links, 6 leads, 5 lead interactions.
+
+> `session_replication_role` is intentionally absent — `ventures_user` is not
+> a superuser. FK insertion order in the script makes it unnecessary.
+
+---
+
+## Backend — API Layer
+
+### Registered routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/ping` | Liveness check |
+| `GET` | `/api/v1/properties/` | List all properties |
+| `GET` | `/api/v1/properties/{slug}` | Single property by slug |
+
+### Conventions (MUST follow when adding endpoints)
+
+- **Router file:** create `app/api/v1/endpoints/<resource>.py`, define
+  `router = APIRouter()`, then register in `app/api/v1/router.py` with
+  `api_router.include_router(router, prefix="/<resource>", tags=["Tag"])`.
+- **Schema file:** create `app/schemas/<resource>.py`. Response schemas use
+  `model_config = ConfigDict(from_attributes=True)`.
+- **DB session:** always inject via `db: Session = Depends(get_db)`.
+- **404 pattern:** `raise HTTPException(status_code=404, detail="...")` when
+  a `.first()` query returns `None`.
+
+### Schema conventions (Pydantic v2)
+
+- **Enums:** always import from `app.models.enums` — never redefine inline.
+- **Monetary/area fields:** use `Decimal`, not `float`, to match `NUMERIC(15,2)`
+  and `NUMERIC(10,2)` DB columns and avoid floating-point precision loss.
+- **Pattern:** `Base` → `Create` (inherits Base) → `Update` (all Optional) →
+  `Response` (inherits Base + id + timestamps) → `DetailResponse` (nested).
+- **Email fields:** use `EmailStr` for automatic format validation.
+- **`completion_percentage` on projects:** `Optional[int] = None` — this field
+  belongs to `project_milestones` in the DB, not `projects`.
+
+---
+
 ## Database Migrations (Alembic)
 
 All Alembic commands run **inside the backend container**:
@@ -173,6 +301,14 @@ alembic downgrade -1
 # Show current migration state
 alembic current
 ```
+
+> **Important:** `alembic/script.py.mako` must be present — it is the Mako
+> template Alembic uses to render new revision files. It is committed to the
+> repo. Do not delete it.
+>
+> The initial migration (`versions/20260504_*_initial_schema.py`) created all
+> 12 domain tables and 10 PostgreSQL ENUM types. Always run
+> `alembic upgrade head` after pulling changes that include new revision files.
 
 ---
 

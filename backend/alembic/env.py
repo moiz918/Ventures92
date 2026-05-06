@@ -1,23 +1,19 @@
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# Pull the Base (and all models) so Alembic can detect schema changes
-from app.db.session import Base  # noqa: F401 — registers metadata
+from app.db.session import Base  # noqa: F401
 from app.core.config import settings
 
-# Import model modules here as they are created so Alembic detects them:
-# from app.models import property, user  # <-- uncomment as you add models
+# Register all models against Base.metadata so Alembic detects schema changes.
+import app.models  # noqa: F401
 
 config = context.config
 
-# Allow alembic.ini loggers to work
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with our settings value
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 target_metadata = Base.metadata

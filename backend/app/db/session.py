@@ -1,19 +1,21 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
 
+
+class Base(DeclarativeBase):
+    pass
+
+
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,   # detect stale connections
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
 
-
-# Dependency — inject a DB session into route handlers
 def get_db():
     db = SessionLocal()
     try:
