@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useTransition } from 'react';
+import { type Location } from '@/services/locationService';
 
 // ── Filter option data ──────────────────────────────────────────────────────
 const TYPE_OPTIONS = [
@@ -64,18 +65,19 @@ const SELECT: React.CSSProperties = {
 };
 
 // ── Component ───────────────────────────────────────────────────────────────
-export default function SearchFilters() {
+export default function SearchFilters({ locations = [] }: { locations?: Location[] }) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
 
-  const currentType     = searchParams.get('property_type')     ?? '';
-  const currentCategory = searchParams.get('property_category') ?? '';
-  const currentMin      = searchParams.get('min_price')          ?? '';
-  const currentMax      = searchParams.get('max_price')          ?? '';
+  const currentType       = searchParams.get('property_type')     ?? '';
+  const currentCategory   = searchParams.get('property_category') ?? '';
+  const currentLocationId = searchParams.get('location_id')       ?? '';
+  const currentMin        = searchParams.get('min_price')          ?? '';
+  const currentMax        = searchParams.get('max_price')          ?? '';
 
-  const activeCount = [currentType, currentCategory, currentMin, currentMax].filter(Boolean).length;
+  const activeCount = [currentType, currentCategory, currentLocationId, currentMin, currentMax].filter(Boolean).length;
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -139,6 +141,24 @@ export default function SearchFilters() {
             ))}
           </select>
         </FilterField>
+
+        {/* Location */}
+        {locations.length > 0 && (
+          <FilterField label="Location">
+            <select
+              style={{ ...SELECT, minWidth: '180px' }}
+              value={currentLocationId}
+              onChange={(e) => update('location_id', e.target.value)}
+            >
+              <option value="">All Locations</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.city} — {loc.region_or_society}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        )}
 
         {/* Min Price */}
         <FilterField label="Min Price">

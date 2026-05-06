@@ -508,10 +508,11 @@ frontend/
       page.tsx                # "use client" — split-screen auth, name+email+password, mock → /dashboard
   components/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
+    CorporatePartners.tsx     # Async Server Component — CSS marquee carousel, getPartners(), logo/name fallback
     LeadCaptureForm.tsx       # "use client" — full lead form, focus states, success/error handling
     PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
     PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav
-    SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/price); useRouter push
+    SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/location/price); locations prop from server
     admin/
       LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
       PropertyForm.tsx        # "use client" — right-side slide-over, 3-section form, createProperty()
@@ -520,6 +521,8 @@ frontend/
   services/
     api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
     leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
+    locationService.ts        # getLocations() + Location interface — cities/societies for search dropdowns
+    partnerService.ts         # getPartners() + Partner interface — active partners ordered by display_order
     projectService.ts         # getProjects(), getProjectBySlug() + Project, ProjectDetail, ProjectMilestone interfaces
     propertyService.ts        # getProperties(), getPropertyBySlug(), createProperty(), deleteProperty() + all TS interfaces
 ```
@@ -529,21 +532,36 @@ frontend/
 - Async RSC; `searchParams` is `Promise<Record<...>>` — always `await` it (Next.js 16).
 - **`budget` redirect**: converts hero search shorthand (`u50m`, `50m-150m`, `150m-plus`) to
   explicit `min_price`/`max_price` params so `SearchFilters` selects stay in sync.
-- Passes cleaned params to `getProperties()` — only sets keys that have a value.
+- Fetches locations server-side via `getLocations().catch(() => [])` in parallel with properties.
+- Passes cleaned params to `getProperties()` — only sets keys that have a value (including `location_id`).
 - Three render states: **property grid** | **EmptyState** (`hasFilters` aware) | **ErrorState**.
-- `SearchFilters` is wrapped in `<Suspense fallback={<FilterBarSkeleton />}>` because it calls
+- `hasFilters` includes `location_id` — triggers "Search Results" heading + clear button.
+- `SearchFilters` is wrapped in `<Suspense fallback={<FilterBarSkeleton hasLocations={...} />}>` because it calls
   `useSearchParams()` — required by Next.js App Router.
 - Filter bar is `position: sticky; top: 64px` — sits below the fixed navbar.
 
 #### `components/SearchFilters.tsx` (`"use client"`)
 
+- Accepts `locations?: Location[]` prop fetched server-side (avoids async in a Client Component).
+- Location dropdown renders only when `locations.length > 0`; positioned between Category and Min Price.
 - Reads current filter values from `useSearchParams()` to keep selects controlled.
 - On any `<select onChange>`, calls `router.push(pathname + '?' + newParams, { scroll: false })`.
 - Always deletes `offset` from params on filter change (resets pagination).
 - `useTransition` wraps each navigation for pending-state opacity fade.
 - Shows "N filters active" badge + "Clear Filters" button only when at least one filter is set.
+- `activeCount` includes `location_id` in its count.
 - Predefined PKR price options (`1 Cr / 5 Cr / 10 Cr / 15 Cr / 50 Cr`) map to raw integer strings
   the backend expects for `min_price` / `max_price`.
+
+### Corporate Partners — `components/CorporatePartners.tsx`
+
+- Async Server Component; calls `getPartners()` — returns `null` render if no partners.
+- **Marquee**: `overflow: hidden` wrapper + duplicated partner array (renders list twice) + `animation: marquee 40s linear infinite` for seamless CSS-only loop.
+- `@keyframes marquee`: `translateX(0) → translateX(-50%)` (half the doubled width = one full cycle).
+- **Logo display**: `<img>` with `filter: brightness(0) invert(1); opacity: 0.45` for monochrome treatment; falls back to partner name text if no `logo_url`.
+- Partner tiles link to `website_url` when present (`target="_blank" rel="noopener noreferrer"`).
+- Left/right fade edges via `linear-gradient` pseudo-overlays (`zIndex: 1`).
+- Uses regular `<img>` (not `next/image`) — partner logo domains are arbitrary, avoiding domain config churn.
 
 ### Property Detail — `app/properties/[slug]/page.tsx`
 
@@ -741,7 +759,8 @@ The `(admin)` route group wraps all admin pages with a shared sidebar + header l
 
 - Async Server Component; no `"use client"`.
 - Calls `getProperties({ is_featured: true, limit: 6 })` wrapped in `try/catch`.
-- Three render states: **property grid** (3-col auto-fill) | **EmptyState** | **ErrorState**.
+- Section order: `<HeroSection />` → `<CorporatePartners />` → Featured Properties grid.
+- Three render states for Featured section: **property grid** (3-col auto-fill) | **EmptyState** | **ErrorState**.
 - Never throws to the browser — backend failure shows a styled error card with contact CTA.
 
 ### Components

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import HeroSection from '@/components/HeroSection';
+import CorporatePartners from '@/components/CorporatePartners';
 import PropertyCard from '@/components/PropertyCard';
 import { getProperties, type Property } from '@/services/propertyService';
 
@@ -23,6 +24,9 @@ export default async function HomePage() {
   return (
     <>
       <HeroSection />
+
+      {/* ── Corporate Partners ──────────────────────────────────────────── */}
+      <CorporatePartners />
 
       {/* ── Featured Properties ─────────────────────────────────────────── */}
       <section style={{ backgroundColor: '#16130d', paddingBlock: '120px' }}>

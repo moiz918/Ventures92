@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getProperties, type Property, type PropertyListParams } from '@/services/propertyService';
+import { getLocations, type Location } from '@/services/locationService';
 import PropertyCard from '@/components/PropertyCard';
 import SearchFilters from '@/components/SearchFilters';
 
@@ -22,10 +23,11 @@ async function fetchProperties(params: RawParams): Promise<{
     offset: str(params.offset) ? parseInt(str(params.offset)!) : 0,
   };
 
-  if (str(params.property_type))     query.property_type     = str(params.property_type) as PropertyListParams['property_type'];
-  if (str(params.property_category)) query.property_category = str(params.property_category) as PropertyListParams['property_category'];
-  if (str(params.min_price))         query.min_price         = str(params.min_price);
-  if (str(params.max_price))         query.max_price         = str(params.max_price);
+  if (str(params.property_type))       query.property_type       = str(params.property_type) as PropertyListParams['property_type'];
+  if (str(params.property_category))   query.property_category   = str(params.property_category) as PropertyListParams['property_category'];
+  if (str(params.location_id))         query.location_id         = str(params.location_id);
+  if (str(params.min_price))           query.min_price           = str(params.min_price);
+  if (str(params.max_price))           query.max_price           = str(params.max_price);
   if (str(params.availability_status)) query.availability_status = str(params.availability_status) as PropertyListParams['availability_status'];
 
   try {
@@ -59,11 +61,15 @@ export default async function PropertiesPage({
     redirect(`/properties?${next.toString()}`);
   }
 
-  const { data: properties, error } = await fetchProperties(params);
+  const [{ data: properties, error }, locations] = await Promise.all([
+    fetchProperties(params),
+    getLocations().catch((): Location[] => []),
+  ]);
 
   const hasFilters = !!(
     str(params.property_type) ||
     str(params.property_category) ||
+    str(params.location_id) ||
     str(params.min_price) ||
     str(params.max_price)
   );
@@ -136,8 +142,8 @@ export default async function PropertiesPage({
           The fallback is the same bar without interactive controls so
           the layout doesn't shift on hydration.
         */}
-        <Suspense fallback={<FilterBarSkeleton />}>
-          <SearchFilters />
+        <Suspense fallback={<FilterBarSkeleton hasLocations={locations.length > 0} />}>
+          <SearchFilters locations={locations} />
         </Suspense>
       </div>
 
@@ -168,7 +174,14 @@ export default async function PropertiesPage({
 }
 
 // ── Filter bar skeleton (Suspense fallback) ───────────────────────────────────
-function FilterBarSkeleton() {
+function FilterBarSkeleton({ hasLocations }: { hasLocations: boolean }) {
+  const labels = hasLocations
+    ? (['Type', 'Category', 'Location', 'Min Price', 'Max Price'] as const)
+    : (['Type', 'Category', 'Min Price', 'Max Price'] as const);
+  const widths: Record<string, string> = {
+    Category: '160px',
+    Location: '180px',
+  };
   return (
     <div
       style={{
@@ -181,7 +194,7 @@ function FilterBarSkeleton() {
         className="mx-auto flex items-end gap-4"
         style={{ maxWidth: '1600px', paddingInline: '64px', paddingBlock: '20px' }}
       >
-        {(['Type', 'Category', 'Min Price', 'Max Price'] as const).map((label) => (
+        {labels.map((label) => (
           <div key={label}>
             <div
               style={{
@@ -198,7 +211,7 @@ function FilterBarSkeleton() {
             </div>
             <div
               style={{
-                width: label === 'Category' ? '160px' : '140px',
+                width: widths[label] ?? '140px',
                 height: '38px',
                 backgroundColor: '#16130d',
                 border: '1px solid #4d4637',
