@@ -485,11 +485,44 @@ frontend/
   app/
     globals.css          # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
     layout.tsx           # Root layout — Navbar + Footer (Server Components)
-    page.tsx             # Homepage (to be built)
+    page.tsx             # Homepage — async RSC, fetches featured properties, three render states
+  components/
+    HeroSection.tsx      # Full-viewport hero, architectural gradient, native GET search bar
+    PropertyCard.tsx     # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
   services/
     api.ts               # Fetch client — api.get/post/put/delete, ApiError class
     propertyService.ts   # getProperties(), getPropertyBySlug() + all TS interfaces
 ```
+
+### Homepage — `app/page.tsx`
+
+- Async Server Component; no `"use client"`.
+- Calls `getProperties({ is_featured: true, limit: 6 })` wrapped in `try/catch`.
+- Three render states: **property grid** (3-col auto-fill) | **EmptyState** | **ErrorState**.
+- Never throws to the browser — backend failure shows a styled error card with contact CTA.
+
+### Components
+
+#### `components/HeroSection.tsx`
+
+- Full-viewport (`min-h-92vh`) dark architectural gradient background.
+- CSS grid-line overlay (72px, 2.5% gold opacity) + gold vertical accent left edge.
+- Headline uses `clamp(44px, 5.5vw, 80px)` Epilogue 800, uppercase, middle word in gold.
+- **Quick Search bar**: native `<form method="GET" action="/properties">` — works without JS.
+  Fields: Location (text), Type (RESIDENTIAL/COMMERCIAL select), Budget (PKR range select).
+- Purely a Server Component — zero `"use client"`.
+
+#### `components/PropertyCard.tsx`
+
+- Accepts `property: Property` + optional `imageUrl?: string`.
+- **Image area** (16:9): real image when `imageUrl` provided; otherwise per-category
+  architectural gradient placeholder with faint gold building SVG watermark.
+- **Price overlay** bottom-left of image — Space Grotesk, gold (`#e6c364`), per design spec.
+- **Status badge** top-left: `AVAILABLE` (gold) · `RESERVED` (amber) · `SOLD` (muted).
+- **Type badge** top-right: Residential / Commercial.
+- **`formatPKR(price: string)`**: converts decimal string → `"PKR 3.5 Cr"` / `"PKR 85 L"` notation.
+- Specs row with inline SVG icons (no external icon library).
+- Entire card is a `<Link>` → `/properties/{slug}` for full-page navigation.
 
 ### Design System — "Architectural Prestige"
 
