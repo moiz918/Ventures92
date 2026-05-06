@@ -391,7 +391,7 @@ export default async function PropertyDetailPage({
                 Book Consultation
               </a>
               <a
-                href="https://wa.me/923001234567"
+                href="https://wa.me/923039640744"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -412,7 +412,7 @@ export default async function PropertyDetailPage({
                 WhatsApp Us
               </a>
               <a
-                href="tel:+923001234567"
+                href="tel:+923039640744"
                 style={{
                   display: 'block',
                   textAlign: 'center',
@@ -424,7 +424,7 @@ export default async function PropertyDetailPage({
                   paddingBlock: '4px',
                 }}
               >
-                +92 300 123 4567
+                +92 303 964 0744
               </a>
             </div>
 

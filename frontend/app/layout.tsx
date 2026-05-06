@@ -232,7 +232,7 @@ function Footer() {
         >
           <div className="flex flex-col sm:flex-row gap-6">
             <a
-              href="tel:+923001234567"
+              href="tel:+923039640744"
               className="text-on-surface-muted hover:text-gold transition-colors duration-200"
               style={{
                 fontFamily: "var(--font-manrope)",
@@ -242,10 +242,10 @@ function Footer() {
                 textTransform: "uppercase",
               }}
             >
-              +92 300 123 4567
+              +92 303 964 0744
             </a>
             <a
-              href="https://wa.me/923001234567"
+              href="https://wa.me/923039640744"
               className="text-on-surface-muted hover:text-gold transition-colors duration-200"
               style={{
                 fontFamily: "var(--font-manrope)",

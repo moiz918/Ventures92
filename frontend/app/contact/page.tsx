@@ -23,8 +23,8 @@ const CONTACT_ITEMS = [
       </svg>
     ),
     label: 'Phone',
-    value: '+92 300 123 4567',
-    href: 'tel:+923001234567',
+    value: '+92 303 964 0744',
+    href: 'tel:+923039640744',
   },
   {
     icon: (
