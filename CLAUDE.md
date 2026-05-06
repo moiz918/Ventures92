@@ -490,13 +490,17 @@ frontend/
       page.tsx                # Property search — async RSC, URL-driven filters + pagination
       [slug]/
         page.tsx              # Property detail — async RSC, 404 → notFound(), gallery + sidebar
+    contact/
+      page.tsx                # Lead capture — two-column layout, trust grid, contact details
   components/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
+    LeadCaptureForm.tsx       # "use client" — full lead form, focus states, success/error handling
     PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
     PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav
     SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/price); useRouter push
   services/
     api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
+    leadService.ts            # submitLead() + LeadCreatePayload interface
     propertyService.ts        # getProperties(), getPropertyBySlug() + all TS interfaces
 ```
 
@@ -546,6 +550,31 @@ frontend/
   inactive = 60% opacity; transitions on `opacity` and `border-color`.
 - `NavButton`: absolute-positioned prev/next arrows; disabled state uses muted colour + dimmed bg.
 - **Empty state**: per-category dark gradient placeholder (matches `PropertyCard`) + faint SVG watermark.
+
+### Contact / Lead Capture — `app/contact/page.tsx`
+
+- Async Server Component (no `"use client"`).
+- Two-column layout: left = copy + trust grid (2×2) + direct contact items; right = `<LeadCaptureForm />` sticky at `top: 88px`.
+- Trust grid: 4 cells (`24h`, `100+`, `6+`, `10+`) in Space Grotesk 700 gold, rendered as a 2-col hairline-grid.
+- Contact items: phone, email, office — each with 36px square gold-outline icon box.
+- Does **not** manage any form state — that is fully delegated to `LeadCaptureForm`.
+
+#### `components/LeadCaptureForm.tsx` (`"use client"`)
+
+- Single `FormState` object managed with one `useState`; `focused` string tracks which field has gold border.
+- `inputStyle(focused: boolean)` factory returns inline style with `border-color` toggling `#C9A84C` / `#4d4637`.
+- **Fields**: `first_name` + `last_name` (2-col grid) · `email` · `phone` · `preferred_property_type` (select with chevron overlay) · `min_budget` + `max_budget` (2-col grid) · `message` (textarea, resizable vertically).
+- On submit: validates `preferred_property_type` non-empty, builds `LeadCreatePayload`, calls `submitLead()`.
+- **Success state**: replaces form with gold-bordered checkmark + "Enquiry Received" copy + "Submit Another" ghost button.
+- **Error state**: inline warning box with SVG icon; `ApiError` 422 → "check your details", else generic message.
+- `isSubmitting`: dims form to 0.7 opacity, swaps button text to spinner + "Submitting…", disables button.
+- Privacy note below submit button.
+
+#### `services/leadService.ts`
+
+- `LeadCreatePayload`: `first_name`, `last_name`, `email`, `phone`, `preferred_property_type` (RESIDENTIAL | COMMERCIAL), optional `min_budget`, `max_budget`, `message`.
+- `submitLead(data)`: `api.post<unknown>('/leads/', data)` — returns `void`, throws `ApiError` on failure.
+- **IMPORTANT**: always use `first_name` + `last_name` — never `full_name` (backend schema constraint).
 
 ### Homepage — `app/page.tsx`
 
