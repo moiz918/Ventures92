@@ -182,7 +182,10 @@ backend/
       lead.py            # Lead, LeadInteraction
       __init__.py        # Imports every model — must stay complete
     schemas/
-      property.py        # PropertyResponse (Pydantic, from_attributes=True)
+      property.py        # PropertyBase, PropertyCreate, PropertyUpdate,
+                         #   PropertyResponse, PropertyDetailResponse
+      project.py         # ProjectBase, ProjectResponse
+      lead.py            # LeadCreate, LeadResponse
     api/
       v1/
         router.py        # api_router — registers all endpoint sub-routers
@@ -264,6 +267,17 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 - **DB session:** always inject via `db: Session = Depends(get_db)`.
 - **404 pattern:** `raise HTTPException(status_code=404, detail="...")` when
   a `.first()` query returns `None`.
+
+### Schema conventions (Pydantic v2)
+
+- **Enums:** always import from `app.models.enums` — never redefine inline.
+- **Monetary/area fields:** use `Decimal`, not `float`, to match `NUMERIC(15,2)`
+  and `NUMERIC(10,2)` DB columns and avoid floating-point precision loss.
+- **Pattern:** `Base` → `Create` (inherits Base) → `Update` (all Optional) →
+  `Response` (inherits Base + id + timestamps) → `DetailResponse` (nested).
+- **Email fields:** use `EmailStr` for automatic format validation.
+- **`completion_percentage` on projects:** `Optional[int] = None` — this field
+  belongs to `project_milestones` in the DB, not `projects`.
 
 ---
 
