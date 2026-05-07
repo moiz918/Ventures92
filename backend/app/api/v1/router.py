@@ -8,6 +8,7 @@ This module is imported by main.py via:
 
 Resulting base paths:
   /api/v1/ping
+  /api/v1/auth/*
   /api/v1/properties/
   /api/v1/projects/
   /api/v1/leads/
@@ -20,6 +21,7 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     amenities,
+    auth,
     leads,
     locations,
     partners,
@@ -35,6 +37,14 @@ api_router = APIRouter()
 async def ping():
     """Simple liveness check for the v1 API."""
     return {"ping": "pong"}
+
+
+# ── Authentication ────────────────────────────────────────────────────────────
+api_router.include_router(
+    auth.router,
+    prefix="/auth",
+    tags=["Authentication"],
+)
 
 
 # ── Public Portal ─────────────────────────────────────────────────────────────

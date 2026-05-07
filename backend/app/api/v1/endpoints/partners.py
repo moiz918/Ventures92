@@ -17,8 +17,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.corporate_partner import CorporatePartner
+from app.models.user import User
 from app.schemas.partner import PartnerCreate, PartnerResponse, PartnerUpdate
 
 router = APIRouter()
@@ -52,7 +54,11 @@ def list_partners(db: Session = Depends(get_db)) -> List[CorporatePartner]:
     status_code=status.HTTP_201_CREATED,
     summary="[Admin] Add a corporate partner",
 )
-def create_partner(payload: PartnerCreate, db: Session = Depends(get_db)) -> CorporatePartner:
+def create_partner(
+    payload: PartnerCreate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> CorporatePartner:
     partner = CorporatePartner(**payload.model_dump())
     db.add(partner)
     db.commit()
@@ -73,6 +79,7 @@ def update_partner(
     id: uuid.UUID,
     payload: PartnerUpdate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> CorporatePartner:
     partner = db.scalars(select(CorporatePartner).where(CorporatePartner.id == id)).first()
     if partner is None:
@@ -99,7 +106,11 @@ def update_partner(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="[Admin] Remove a corporate partner",
 )
-def delete_partner(id: uuid.UUID, db: Session = Depends(get_db)) -> None:
+def delete_partner(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> None:
     partner = db.scalars(select(CorporatePartner).where(CorporatePartner.id == id)).first()
     if partner is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Corporate partner not found")

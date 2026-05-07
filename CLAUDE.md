@@ -165,8 +165,11 @@ backend/
     script.py.mako       # Mako template for generated migration files
     versions/            # Auto-generated revision files (commit these)
   app/
+    api/
+      deps.py            # get_current_user / require_admin / require_super_admin
     core/
-      config.py          # Pydantic Settings — reads DATABASE_URL from env
+      config.py          # Pydantic Settings — DATABASE_URL, JWT_SECRET, cookie config
+      security.py        # bcrypt + JWT (access/refresh) + reset-token utilities
     db/
       session.py         # DeclarativeBase, engine, SessionLocal, get_db()
     models/
@@ -943,3 +946,117 @@ in `@layer base`.
 
 Always query the Stitch MCP before adding new screens to verify colors, spacing,
 and component structure against the design.
+
+---
+
+## Authentication & Authorization
+
+### Architecture
+
+JWT bearer tokens delivered as **HttpOnly Secure SameSite=Lax cookies**.
+Access tokens carry the role; refresh tokens are opaque to the client.
+Middleware silently rotates expired access cookies using the refresh cookie.
+
+| Layer | Responsibility |
+|---|---|
+| `backend/app/core/security.py` | bcrypt hash/verify · access + refresh JWT encode/decode · password-reset token gen + SHA-256 hash |
+| `backend/app/core/config.py` | `JWT_SECRET`, expiry settings, cookie flags, CORS list, lockout policy |
+| `backend/app/api/deps.py` | `get_current_user` · `require_admin` · `require_super_admin` |
+| `backend/app/api/v1/endpoints/auth.py` | login · logout · me · refresh · forgot-password · reset-password |
+| `frontend/middleware.ts` | gates `/admin/*`; auto-refreshes when only the refresh cookie is present |
+| `frontend/lib/auth.ts` | RSC helper — `getCurrentUser()` / `getAdminUserOrNull()` |
+| `frontend/services/authService.ts` | typed client for the auth endpoints |
+| `frontend/app/admin/layout.tsx` | server-side role check; redirects to `/login?next=…` if missing |
+| `frontend/app/admin/AdminShell.tsx` | client wrapper — sidebar, header, mobile drawer, real logout |
+
+### Endpoints (`/api/v1/auth/*`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/login` | email + password → sets `v92_access` + `v92_refresh` HttpOnly cookies |
+| `POST` | `/auth/logout` | clears auth cookies |
+| `GET`  | `/auth/me` | returns current authenticated user (used for SSR rehydration) |
+| `POST` | `/auth/refresh` | rotates the access cookie using the refresh cookie |
+| `POST` | `/auth/forgot-password` | logs (or emails) a one-time reset link; **always 200** to prevent enumeration |
+| `POST` | `/auth/reset-password` | verifies token + sets new password; resets lockout state |
+
+### Roles
+
+`SUPER_ADMIN` and `AGENT` may access `/admin/*` and admin endpoints. `INVESTOR`
+and `BUYER_TENANT` cannot — `require_admin` returns `403`. The middleware only
+gates cookie *presence*; the layout's `getAdminUserOrNull()` is the role gate.
+
+### Security hardening
+
+- **bcrypt cost 12** — matches all seeded hashes; verified by `passlib`.
+- **Account lockout** — `MAX_FAILED_LOGIN_ATTEMPTS=5` failures → lock for `LOCKOUT_MINUTES=15`. Successful login zeroes both counters and stamps `last_login_at`.
+- **Timing-equivalent failures** — login runs a dummy `verify_password` when the email is unknown so response time leaks no enumeration signal.
+- **Reset tokens** — the raw token is delivered once via email/log; only its SHA-256 hex is persisted in `users.password_reset_token_hash`. Tokens expire after `PASSWORD_RESET_EXPIRE_MINUTES=30`.
+- **CORS** — `allow_credentials=True` requires an explicit allowlist. Configure via `CORS_ORIGINS` (comma-separated).
+- **Cookies** — `HttpOnly`, `SameSite=Lax`, `Path=/`. Set `COOKIE_SECURE=true` when serving over HTTPS in production.
+- **CSRF** — `SameSite=Lax` blocks cross-site form-POST CSRF. Frontend POSTs originate from the same site; no separate CSRF token required for this configuration.
+
+### Auth env vars (configure in `.env`)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `JWT_SECRET` | dev placeholder | **MUST** be overridden in prod (`python -c "import secrets;print(secrets.token_urlsafe(64))"`) |
+| `JWT_ALGORITHM` | `HS256` | |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | `14` | |
+| `PASSWORD_RESET_EXPIRE_MINUTES` | `30` | |
+| `MAX_FAILED_LOGIN_ATTEMPTS` | `5` | |
+| `LOCKOUT_MINUTES` | `15` | |
+| `COOKIE_SECURE` | `false` (dev) | flip to `true` behind HTTPS |
+| `COOKIE_SAMESITE` | `lax` | |
+| `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | |
+| `FRONTEND_URL` | `http://localhost:3000` | used inside reset-password emails |
+
+### Dev login credentials (seeded)
+
+All `SUPER_ADMIN` and `AGENT` accounts in `backend/seed.sql` share one bcrypt hash:
+
+```
+Password: Ventures92Admin@2026
+```
+
+Example admin emails: `admin@ventures92.com`, `agent.ali@ventures92.com`. After
+first login in any non-dev environment, force a password reset.
+
+### Verification
+
+**Login flow (curl):**
+```bash
+# 1. Sign in — captures cookies into auth.txt
+curl -c auth.txt -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@ventures92.com","password":"Ventures92Admin@2026"}'
+
+# 2. Inspect cookies — should contain v92_access (HttpOnly) and v92_refresh
+cat auth.txt
+
+# 3. Hit a protected endpoint
+curl -b auth.txt http://localhost:8000/api/v1/auth/me
+
+# 4. Refresh the access cookie
+curl -b auth.txt -c auth.txt -X POST http://localhost:8000/api/v1/auth/refresh
+
+# 5. Logout — cookies cleared
+curl -b auth.txt -c auth.txt -X POST http://localhost:8000/api/v1/auth/logout
+```
+
+**Browser:**
+
+1. Visit `/admin/dashboard` — middleware redirects to `/login?next=/admin/dashboard`.
+2. Sign in with the seeded credentials → hard navigation back to dashboard.
+3. DevTools → Application → Cookies — `v92_access` + `v92_refresh` present, `HttpOnly` flag set.
+4. Click Logout — cookies are cleared; `/admin/*` again redirects.
+5. Wait > 30 minutes (or shorten `ACCESS_TOKEN_EXPIRE_MINUTES`) — next admin page load silently rotates the access cookie via the refresh flow.
+
+**Forgot/reset flow:**
+
+1. Visit `/forgot-password` and submit a known email — the backend logs a link like `http://localhost:3000/reset-password?token=...` to `docker-compose logs backend`.
+2. Open the link; submit a new password (≥ 10 chars).
+3. Sign in with the new password.
+
+**Swagger UI** (`/api/docs`): the `Authorize` button accepts the access JWT as a Bearer token (auth dependencies fall back to `Authorization: Bearer …` when no cookie is present).

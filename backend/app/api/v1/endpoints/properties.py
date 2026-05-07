@@ -21,10 +21,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.enums import AvailabilityStatus, PropertyCategory, PropertyType
 from app.models.project import Project
 from app.models.property import Amenity, Property
+from app.models.user import User
 from app.schemas.property import (
     PropertyCreate,
     PropertyDetailResponse,
@@ -126,7 +128,11 @@ def get_property(slug: str, db: Session = Depends(get_db)) -> Property:
     status_code=status.HTTP_201_CREATED,
     summary="[Admin] Create a new property",
 )
-def create_property(payload: PropertyCreate, db: Session = Depends(get_db)) -> Property:
+def create_property(
+    payload: PropertyCreate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> Property:
     # Resolve slug — auto-generate from title if not provided, ensure uniqueness.
     base_slug = _slugify(payload.slug or payload.title)
     slug = _unique_slug(base_slug, db)
@@ -160,6 +166,7 @@ def update_property(
     id: uuid.UUID,
     payload: PropertyUpdate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> Property:
     prop = db.scalars(select(Property).where(Property.id == id)).first()
     if prop is None:
@@ -191,7 +198,11 @@ def update_property(
 # ---------------------------------------------------------------------------
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT, summary="[Admin] Delete a property")
-def delete_property(id: uuid.UUID, db: Session = Depends(get_db)) -> None:
+def delete_property(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> None:
     prop = db.scalars(select(Property).where(Property.id == id)).first()
     if prop is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")

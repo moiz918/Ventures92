@@ -18,9 +18,11 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.enums import InteractionType, LeadStatus
 from app.models.lead import Lead, LeadInteraction
+from app.models.user import User
 from app.schemas.lead import LeadCreate, LeadResponse
 
 router = APIRouter()
@@ -94,6 +96,7 @@ def list_leads(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> List[Lead]:
     stmt = (
         select(Lead)
@@ -123,6 +126,7 @@ def update_lead_status(
     id: uuid.UUID,
     payload: LeadStatusUpdate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> Lead:
     lead = db.scalars(select(Lead).where(Lead.id == id)).first()
     if lead is None:
@@ -151,6 +155,7 @@ def create_interaction(
     id: uuid.UUID,
     payload: InteractionCreate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> LeadInteraction:
     lead = db.scalars(select(Lead).where(Lead.id == id)).first()
     if lead is None:

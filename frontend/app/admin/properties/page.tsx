@@ -267,11 +267,12 @@ export default function AdminPropertiesPage() {
           </div>
         ) : (
           <div
+            className="admin-table-wrap"
             style={{
               border: '1px solid #4d4637',
-              overflow: 'hidden',
             }}
           >
+            <div style={{ minWidth: '780px' }}>
             {/* Table header */}
             <div
               style={{
@@ -472,6 +473,7 @@ export default function AdminPropertiesPage() {
                 );
               })
             )}
+            </div>
           </div>
         )}
       </div>

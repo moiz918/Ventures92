@@ -18,10 +18,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.enums import MilestoneStatus, ProjectStatus
 from app.models.project import Project, ProjectMilestone
 from app.models.property import Property
+from app.models.user import User
 from app.schemas.project import ProjectResponse
 from app.schemas.property import PropertyResponse
 
@@ -159,6 +161,7 @@ def create_milestone(
     id: uuid.UUID,
     payload: MilestoneCreate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> ProjectMilestone:
     project = db.scalars(select(Project).where(Project.id == id)).first()
     if project is None:

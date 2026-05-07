@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+import { ApiError } from '@/services/api';
+import { isAdminRole, login } from '@/services/authService';
 
 // ── Shared auth input style factory ──────────────────────────────────────────
 function inputStyle(focused: boolean): React.CSSProperties {
@@ -33,23 +36,64 @@ const LABEL: React.CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next') || '/admin/dashboard';
+  const sessionExpired = searchParams.get('expired') === '1';
 
   const [email,         setEmail]         = useState('');
   const [password,      setPassword]      = useState('');
   const [showPassword,  setShowPassword]  = useState(false);
   const [focused,       setFocused]       = useState<string | null>(null);
   const [isSubmitting,  setIsSubmitting]  = useState(false);
-  const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
+  const [errorMsg,      setErrorMsg]      = useState<string | null>(
+    sessionExpired ? 'Your session expired. Please sign in again.' : null,
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
     setIsSubmitting(true);
-    // Mock auth — replace with real API call when auth backend is ready
-    await new Promise((r) => setTimeout(r, 700));
-    setIsSubmitting(false);
-    router.push('/admin/dashboard');
+    try {
+      const { user } = await login({ email: email.trim(), password });
+      if (!isAdminRole(user.role)) {
+        setErrorMsg('This account does not have admin access.');
+        setIsSubmitting(false);
+        return;
+      }
+      // The backend has already set HttpOnly cookies on the response.
+      // Use a hard navigation so RSC/middleware see the new cookies.
+      const safeNext = nextPath.startsWith('/') ? nextPath : '/admin/dashboard';
+      window.location.assign(safeNext);
+    } catch (err) {
+      setIsSubmitting(false);
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          setErrorMsg('Invalid email or password.');
+        } else if (err.status === 403) {
+          setErrorMsg(err.message || 'Account disabled. Please contact an administrator.');
+        } else if (err.status === 423) {
+          setErrorMsg(
+            err.message ||
+              'Account temporarily locked after too many failed attempts. Try again later.',
+          );
+        } else if (err.status === 422) {
+          setErrorMsg('Please double-check the email format.');
+        } else {
+          setErrorMsg('We could not sign you in right now. Please try again.');
+        }
+      } else {
+        setErrorMsg('Network error — please check your connection and try again.');
+      }
+    }
   }
 
   return (
@@ -194,17 +238,16 @@ export default function LoginPage() {
 
       {/* ── Right panel — form ──────────────────────────────────────── */}
       <div
+        className="login-right-panel lg:max-w-[520px]"
         style={{
           width: '100%',
           maxWidth: '520px',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          padding: '48px 56px',
           backgroundColor: '#16130d',
           borderLeft: '1px solid #2d2a23',
         }}
-        className="lg:max-w-[520px]"
       >
         {/* Mobile logo */}
         <div className="lg:hidden" style={{ marginBottom: '40px' }}>
@@ -321,7 +364,7 @@ export default function LoginPage() {
             >
               <label style={{ ...LABEL, marginBottom: 0 }}>Password</label>
               <Link
-                href="#"
+                href="/forgot-password"
                 style={{
                   fontFamily: 'var(--font-manrope)',
                   fontSize: '11px',

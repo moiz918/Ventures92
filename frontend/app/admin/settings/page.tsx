@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+
 import { api } from '@/services/api';
+import ChangePasswordForm from './ChangePasswordForm';
 
 export const metadata: Metadata = {
   title: 'Settings — Admin',
@@ -197,6 +199,8 @@ export default async function AdminSettingsPage() {
           ))}
         </div>
       )}
+
+      <ChangePasswordForm />
     </div>
   );
 }

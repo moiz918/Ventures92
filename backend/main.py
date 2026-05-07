@@ -1,8 +1,18 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
 from app.api.v1.router import api_router
+from app.core.config import settings
+
+# ---------------------------------------------------------------------------
+# Logging — auth events emit at WARNING so they show up in `docker compose logs`
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -15,17 +25,13 @@ app = FastAPI(
 
 # ---------------------------------------------------------------------------
 # CORS
-# The browser always calls the backend via the HOST-mapped port (localhost:8000),
-# so we only need to allow the Next.js dev origin here.
+# allow_credentials=True is REQUIRED so the browser includes our HttpOnly auth
+# cookies on cross-origin XHR.  When credentials are allowed, allow_origins
+# MUST be an explicit allowlist (wildcard is rejected by browsers).
 # ---------------------------------------------------------------------------
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

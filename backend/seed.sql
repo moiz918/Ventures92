@@ -3,17 +3,30 @@ BEGIN;
 -- ==========================================
 -- 1. USERS
 -- ==========================================
+-- ----------------------------------------------------------------------------
+-- DEV LOGIN CREDENTIALS
+-- ----------------------------------------------------------------------------
+-- All SUPER_ADMIN and AGENT accounts below share the same bcrypt-hashed
+-- password for development:
+--
+--     Password: Ventures92Admin@2026
+--
+-- The hash is a real bcrypt(cost=12) hash of that password, NOT a placeholder.
+-- Replace via a forced password reset after first login in production.
+-- INVESTOR and BUYER_TENANT accounts retain inert hashes — they cannot log in
+-- to the admin portal regardless of role checks.
+-- ----------------------------------------------------------------------------
 INSERT INTO users (id, email, password_hash, first_name, last_name, phone_number, role, is_active) VALUES
 -- SUPER ADMINS
-('a1b2c3d4-e5f6-7890-1234-56789abcdef0', 'admin@ventures92.com', '$2b$12$dummyhash12345678901234', 'Saad', 'Ather', '+923001234567', 'SUPER_ADMIN', TRUE),
-('a1b2c3d4-e5f6-7890-1234-56789abcdef1', 'manzer@ventures92.com', '$2b$12$dummyhash12345678901234', 'Manzer', 'Abbas', '+923211234567', 'SUPER_ADMIN', TRUE),
-('a1b2c3d4-e5f6-7890-1234-56789abcdef2', 'daniyal@ventures92.com', '$2b$12$dummyhash12345678901234', 'Daniyal', 'Zaidi', '+923331234567', 'SUPER_ADMIN', TRUE),
-('a1b2c3d4-e5f6-7890-1234-56789abcdef3', 'moiz@ventures92.com', '$2b$12$dummyhash12345678901234', 'Abdul', 'Moiz', '+923451234567', 'SUPER_ADMIN', TRUE),
+('a1b2c3d4-e5f6-7890-1234-56789abcdef0', 'admin@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Saad', 'Ather', '+923001234567', 'SUPER_ADMIN', TRUE),
+('a1b2c3d4-e5f6-7890-1234-56789abcdef1', 'manzer@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Manzer', 'Abbas', '+923211234567', 'SUPER_ADMIN', TRUE),
+('a1b2c3d4-e5f6-7890-1234-56789abcdef2', 'daniyal@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Daniyal', 'Zaidi', '+923331234567', 'SUPER_ADMIN', TRUE),
+('a1b2c3d4-e5f6-7890-1234-56789abcdef3', 'moiz@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Abdul', 'Moiz', '+923451234567', 'SUPER_ADMIN', TRUE),
 -- AGENTS
-('b1c2d3e4-f5a6-7890-1234-56789abcdef0', 'agent.ali@ventures92.com', '$2b$12$dummyhash12345678901234', 'Ali', 'Raza', '+923019876543', 'AGENT', TRUE),
-('b1c2d3e4-f5a6-7890-1234-56789abcdef1', 'agent.sara@ventures92.com', '$2b$12$dummyhash12345678901234', 'Sara', 'Khan', '+923229876543', 'AGENT', TRUE),
-('b1c2d3e4-f5a6-7890-1234-56789abcdef2', 'agent.usman@ventures92.com', '$2b$12$dummyhash12345678901234', 'Usman', 'Tariq', '+923349876543', 'AGENT', TRUE),
-('b1c2d3e4-f5a6-7890-1234-56789abcdef3', 'agent.fatima@ventures92.com', '$2b$12$dummyhash12345678901234', 'Fatima', 'Zehra', '+923469876543', 'AGENT', TRUE),
+('b1c2d3e4-f5a6-7890-1234-56789abcdef0', 'agent.ali@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Ali', 'Raza', '+923019876543', 'AGENT', TRUE),
+('b1c2d3e4-f5a6-7890-1234-56789abcdef1', 'agent.sara@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Sara', 'Khan', '+923229876543', 'AGENT', TRUE),
+('b1c2d3e4-f5a6-7890-1234-56789abcdef2', 'agent.usman@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Usman', 'Tariq', '+923349876543', 'AGENT', TRUE),
+('b1c2d3e4-f5a6-7890-1234-56789abcdef3', 'agent.fatima@ventures92.com', '$2b$12$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy', 'Fatima', 'Zehra', '+923469876543', 'AGENT', TRUE),
 -- INVESTORS
 ('c1d2e3f4-a5b6-7890-1234-56789abcdef0', 'investor.bilal@gmail.com', '$2b$12$dummyhash12345678901234', 'Bilal', 'Ahmed', '+923051112223', 'INVESTOR', TRUE),
 ('c1d2e3f4-a5b6-7890-1234-56789abcdef1', 'zainab.invest@yahoo.com', '$2b$12$dummyhash12345678901234', 'Zainab', 'Malik', '+923231112223', 'INVESTOR', TRUE),

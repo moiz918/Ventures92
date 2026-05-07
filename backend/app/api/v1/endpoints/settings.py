@@ -14,8 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.site_setting import SiteSetting
+from app.models.user import User
 from app.schemas.setting import SettingResponse, SettingUpdate
 
 router = APIRouter()
@@ -48,6 +50,7 @@ def update_setting(
     key: str,
     payload: SettingUpdate,
     db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
 ) -> SiteSetting:
     setting = db.scalars(
         select(SiteSetting).where(SiteSetting.setting_key == key)

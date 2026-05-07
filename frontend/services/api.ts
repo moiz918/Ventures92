@@ -24,17 +24,33 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+/**
+ * Internal options forwarded to fetch.
+ * - `headers`: extra headers (e.g. Cookie when called from a Server Component).
+ * - `cache` / `next`: standard Next.js fetch options.
+ * - `skipCredentials`: rare opt-out for endpoints that should NOT send cookies.
+ */
+type RequestOptions = RequestInit & { skipCredentials?: boolean };
+
+async function request<T>(path: string, options?: RequestOptions): Promise<T> {
+  const { skipCredentials, ...rest } = options ?? {};
+
+  const init: RequestInit = {
     // Default: never serve stale data for this platform.
     // Individual callers can pass { next: { revalidate: N } } to opt into ISR.
     cache: 'no-store',
+    // Browser: always include cookies on cross-origin XHR so HttpOnly auth
+    // cookies travel with the request. Server-side callers pass an explicit
+    // Cookie header when they need to forward the user's session.
+    credentials: skipCredentials ? 'omit' : 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...options?.headers,
+      ...rest.headers,
     },
-    ...options,
-  });
+    ...rest,
+  };
+
+  const res = await fetch(`${API_BASE_URL}${path}`, init);
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -47,27 +63,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new ApiError(res.status, res.statusText, detail);
   }
 
+  // 204 No Content — return undefined as T
+  if (res.status === 204) {
+    return undefined as T;
+  }
   return res.json() as Promise<T>;
 }
 
 export const api = {
-  get: <T>(path: string, options?: RequestInit) =>
+  get: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { method: 'GET', ...options }),
 
-  post: <T>(path: string, body: unknown, options?: RequestInit) =>
+  post: <T>(path: string, body: unknown, options?: RequestOptions) =>
     request<T>(path, {
       method: 'POST',
       body: JSON.stringify(body),
       ...options,
     }),
 
-  put: <T>(path: string, body: unknown, options?: RequestInit) =>
+  put: <T>(path: string, body: unknown, options?: RequestOptions) =>
     request<T>(path, {
       method: 'PUT',
       body: JSON.stringify(body),
       ...options,
     }),
 
-  delete: <T>(path: string, options?: RequestInit) =>
+  delete: <T>(path: string, options?: RequestOptions) =>
     request<T>(path, { method: 'DELETE', ...options }),
 };

@@ -61,6 +61,18 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - PROJECT_NAME=Ventures 92
+      # ── Auth ────────────────────────────────────────────────────────────
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - REFRESH_TOKEN_EXPIRE_DAYS=14
+      - PASSWORD_RESET_EXPIRE_MINUTES=30
+      - MAX_FAILED_LOGIN_ATTEMPTS=5
+      - LOCKOUT_MINUTES=15
+      - COOKIE_SECURE=false
+      - COOKIE_SAMESITE=lax
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - FRONTEND_URL=http://localhost:3000
     # Override CMD from Dockerfile to enforce --reload in dev
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
