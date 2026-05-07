@@ -281,9 +281,7 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 | **Locations** | | |
 | `GET` | `/api/v1/locations/` | All cities + societies for search dropdowns |
 | **Amenities** | | |
-| `GET` | `/api/v1/amenities/` | All amenities ordered by name — used by PropertyForm |
-| **Amenities** | | |
-| `GET` | `/api/v1/amenities/` | All amenities ordered by name (for admin PropertyForm) |
+| `GET` | `/api/v1/amenities/` | All amenities ordered by name — used by PropertyForm for UUID checkbox wiring |
 
 ### Query parameters — `GET /api/v1/properties/`
 
@@ -458,13 +456,17 @@ docker-compose down -v --remove-orphans && docker-compose up --build
 | `POSTGRES_DB`       | `ventures92`             | db, backend              |
 | `PGADMIN_EMAIL`     | `admin@ventures92.local` | pgadmin                  |
 | `PGADMIN_PASSWORD`  | `pgadmin_pass`           | pgadmin                  |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` | frontend — browser-side fetches |
+| `INTERNAL_API_URL`  | `http://backend:8000/api/v1` | frontend — **server-side RSC fetches inside Docker** |
 
 Change any of these in the root `.env` file before running `docker-compose up`.
 
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` | frontend (browser) |
-
-> For server-side Next.js fetches inside the Docker network, set
-> `API_URL=http://backend:8000/api/v1` in the frontend service environment.
+> **Docker networking:** RSC pages run inside the `frontend` container and cannot reach
+> `localhost:8000`. They must use the Docker service name `backend`.
+> `services/api.ts` resolves the base URL with the fallback chain:
+> `INTERNAL_API_URL` → `API_URL` → `NEXT_PUBLIC_API_URL` → `http://localhost:8000/api/v1`.
+> Always set `INTERNAL_API_URL=http://backend:8000/api/v1` in the frontend service environment
+> in `docker-compose.yml` — omitting it causes all server-side fetches to silently fail.
 
 ---
 
@@ -490,6 +492,9 @@ frontend/
     globals.css               # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
     layout.tsx                # Root layout — Navbar + Footer + WhatsApp FAB (Server Components)
     page.tsx                  # Homepage — async RSC, fetches featured properties, three render states
+    error.tsx                 # "use client" — global error boundary; Reset + Back to Home; shows error.digest
+    loading.tsx               # Global loading spinner — gold CSS spin animation, branded
+    not-found.tsx             # Global 404 — "404" hero numeral + Back to Home + Browse Properties
     admin/
       layout.tsx              # Admin route group layout — sticky sidebar + header, no URL change
       dashboard/
@@ -500,10 +505,12 @@ frontend/
       page.tsx                # Async RSC — "Exclusive Developments" hero, stat strip, 3-col ProjectCard grid
       [slug]/
         page.tsx              # Async RSC — project hero, description, MilestoneTimeline, sticky sidebar
+        not-found.tsx         # Project-specific 404 — "We couldn't find that development"
     properties/
       page.tsx                # Property search — async RSC, URL-driven filters + pagination
       [slug]/
         page.tsx              # Property detail — async RSC, 404 → notFound(), gallery + sidebar
+        not-found.tsx         # Property-specific 404 — "We couldn't find that property"
     contact/
       page.tsx                # Lead capture — two-column layout, trust grid, contact details
     login/
@@ -523,7 +530,7 @@ frontend/
     ProjectCard.tsx           # Server Component — luxury development card, status badge, gradient placeholder
     MilestoneTimeline.tsx     # Server Component — vertical timeline, completed/upcoming node states, progress bars
   services/
-    api.ts                    # Fetch client — api.get/post/put/delete, ApiError class
+    api.ts                    # Fetch client — api.get/post/put/delete, ApiError class; env fallback: INTERNAL_API_URL → API_URL → NEXT_PUBLIC_API_URL
     leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
     locationService.ts        # getLocations() + Location interface — cities/societies for search dropdowns
     partnerService.ts         # getPartners() + Partner interface — active partners ordered by display_order
@@ -580,8 +587,10 @@ frontend/
 - **Right sidebar** (`position: sticky; top: 88px`): Asking Price (Space Grotesk gold) → status row →
   Book Consultation (gold fill) → WhatsApp Us (gold outline) → phone link → Back to Listings.
 - `formatPKR()` converts decimal strings to `"X Crore"` / `"X Lakh"` (full word, not abbreviation).
+- `formatArea(size, unit)` renders `area_size` + `area_unit` in the specs grid. No `area_sqft` or `floors` fields exist — do not reference them.
+- `hasSpecs`: `property.bedrooms != null || property.bathrooms != null || property.area_size != null` — shows specs grid only when at least one value is present.
 - Status colours: AVAILABLE = gold badge, RESERVED = dark amber, SOLD = muted.
-- Inline SVG icons (Bed, Bath, Area, Floors) — no external icon library.
+- Inline SVG icons (Bed, Bath, Area) — no external icon library. Floors icon removed.
 - Mobile: price shown inline below H1 (hidden on `lg:`); sidebar stacks below gallery column.
 
 #### `components/PropertyGallery.tsx` (`"use client"`)
@@ -632,7 +641,7 @@ Both pages share an identical split-screen layout pattern:
 #### `services/leadService.ts`
 
 - `LeadCreatePayload`: `first_name`, `last_name`, `email`, `phone`, `preferred_property_type` (RESIDENTIAL | COMMERCIAL), optional `min_budget`, `max_budget`, `message`.
-- `LeadResponse`: full lead object with `id`, `status` (`NEW | CONTACTED | QUALIFIED | CLOSED`), `assigned_agent_id`, `created_at`, `updated_at`.
+- `LeadResponse`: full lead object with `id`, `status` (`NEW | CONTACTED | QUALIFIED | IN_PROGRESS | CLOSED | LOST`), `assigned_agent_id`, `created_at`, `updated_at`.
 - `submitLead(data)`: `api.post<unknown>('/leads/', data)` — returns `void`, throws `ApiError` on failure.
 - `getLeads()`: `api.get<LeadResponse[]>('/leads/')` — admin only.
 - `updateLeadStatus(id, status)`: `api.put<LeadResponse>('/leads/{id}/status', { status })` — admin only.
@@ -654,13 +663,16 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 #### `components/admin/LeadKanban.tsx` (`"use client"`)
 
 - Fetches all leads via `getLeads()` on mount; stores in `useState<LeadResponse[]>`.
-- **4 columns** matching backend `LeadStatus` enum, each with a distinct accent colour:
+- **6 columns** matching backend `LeadStatus` enum, each with a distinct accent colour:
   | Status | Label | Accent |
   |---|---|---|
   | `NEW` | New | `#99907e` |
   | `CONTACTED` | Contacted | `#C9A84C` |
   | `QUALIFIED` | Qualified | `#1D9E75` |
+  | `IN_PROGRESS` | In Progress | `#5B8AF0` |
   | `CLOSED` | Closed | `#4d4637` |
+  | `LOST` | Lost | `#8B2E2E` |
+- `STATUS_TRANSITIONS`: maps each status to its valid next states — only those buttons are rendered per card.
 - Each column header: `border-top: 3px solid {accent}`, label + count badge.
 - **Lead card**: `backgroundColor: #1e1b15`, `border-left: 3px solid {accent}`. Shows name, time ago, property type badge, email, phone, budget range (formatted PKR), message snippet.
 - **Status move buttons** at card bottom: only valid next-status transitions shown (e.g. NEW can only go to CONTACTED). Styled as outlined buttons in the target column's accent colour.
@@ -683,17 +695,19 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 - Header row: `backgroundColor: #100e08`, `border-bottom: 2px solid #4d4637`, Manrope 10px uppercase `#4d4637` labels.
 - Rows: `backgroundColor: #1e1b15`, `border-bottom: 1px solid #4d4637`, hover `#2d2a23` via `.table-row-hover` class in `globals.css`.
 - Status badges: AVAILABLE=gold, RESERVED=amber (`#E8A020`), SOLD=muted (`#4d4637`) — outlined, no fill.
-- **Delete flow**: Click "Delete" → sets `confirmDeleteId`. Row shows "Confirm" + "Cancel" buttons. "Confirm" calls `deleteProperty(id)` with optimistic removal. Dim row with opacity 0.4 + `deletingId` state during API call.
+- **Delete flow**: Click "Delete" → sets `confirmDeleteId`. Row shows "Confirm" + "Cancel" buttons. "Confirm" calls `deleteProperty(id)` with optimistic removal. Dim row with opacity 0.4 + `deletingId` state during API call. On error, sets `actionError` state — shown as a dismissible red-tinted banner above the table.
 - **Add New Property** button (gold fill) opens `<PropertyForm>` slide-over. `onSuccess` prepends the new property to local state.
+- **View link**: each row has a "View" `<a target="_blank">` linking to `/properties/{slug}` (public listing). No edit UI exists yet.
+- **`router.refresh()`**: called after both successful delete and successful create to invalidate the Next.js RSC cache so public listing pages reflect the DB change immediately.
 - `<TableSkeleton />`: 5 skeleton rows at 0.4 opacity with CSS pulse animation (shared `@keyframes pulse` in `globals.css`).
 
 #### `components/admin/PropertyForm.tsx` (`"use client"`)
 
 - Right-side slide-over panel: `position: fixed; right: 0; height: 100vh; width: 600px; background: #16130d; border-left: 1px solid #4d4637; z-index: 200`. Dark backdrop click closes panel.
 - Panel header: "Admin" eyebrow (gold) + "Add New Property" title + X close button.
-- **Section 1 — Basic Info**: title (required), description (textarea, 4 rows), price (PKR, required), area_sqft — 2-col grid; bedrooms + bathrooms + floors — 3-col grid.
+- **Section 1 — Basic Info**: title (required), description (textarea, 4 rows), price (PKR, required), area_size + area_unit select (SQ_FT/SQ_YARD/MARLA/KANAL) — 2-col grid; bedrooms + bathrooms — 2-col grid. No `floors` field.
 - **Section 2 — Classification**: property_type select (RESIDENTIAL / COMMERCIAL), property_category select (APARTMENT / HOUSE / PLOT / OFFICE / SHOP) — 2-col grid; availability_status select full-width.
-- **Section 3 — Features & Amenities**: `ToggleRow` for `is_featured` (slide toggle pill, gold when active); 3-col grid of 12 amenity name checkboxes (Swimming Pool, Gymnasium, Parking, etc.) — visual only, not yet wired to `amenity_ids` UUIDs.
+- **Section 3 — Features & Amenities**: `ToggleRow` for `is_featured` (slide toggle pill, gold when active); amenity checkboxes fetched live from `GET /amenities/` via `getAmenities()` — each checkbox value is the amenity UUID, submitted as `amenity_ids[]`.
 - `SectionHeading`: gold 10px uppercase label + flex-1 `#4d4637` divider line.
 - `inputStyle(focused: boolean)`: `background: #100e08; border: 1px solid {focused ? #C9A84C : #4d4637}; color: #e9e1d7; padding: 12px 14px`.
 - All `<select>` elements use `appearance: none` + absolute `ChevronIcon` overlay.
@@ -702,10 +716,11 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 
 #### Additions to `services/propertyService.ts`
 
-- `PropertyCreatePayload`: title, slug?, description?, property_type, property_category, price (Decimal string), area_sqft?, bedrooms?, bathrooms?, floors?, availability_status, is_featured, project_id?, amenity_ids?.
+- `PropertyCreatePayload`: title, slug?, description?, property_type, property_category, price (Decimal string), area_size? (Decimal string), area_unit? (AreaUnit enum), bedrooms?, bathrooms?, availability_status, is_featured, project_id?, amenity_ids? (UUID[]).
 - `createProperty(data)`: `api.post<Property>('/properties/', data)`.
 - `deleteProperty(id: string)`: `api.delete<unknown>('/properties/{id}')` — returns void.
-- **Note**: `amenity_ids` requires UUIDs from `GET /amenities/` (not yet implemented as a separate endpoint). The form captures amenity names as a visual selection only.
+- `getAmenities()`: `api.get<Amenity[]>('/amenities/')` — returns `{ id: string; name: string; icon_name?: string }[]` ordered by name. Used by PropertyForm to populate real amenity UUID checkboxes.
+- **`area_sqft` and `floors` do not exist** — use `area_size` (Decimal string) + `area_unit` (AreaUnit enum) everywhere.
 
 ### Projects Portal — `app/projects/`
 
@@ -754,7 +769,7 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 
 #### `services/projectService.ts`
 
-- `ProjectStatus`: `'PLANNED' | 'UNDER_CONSTRUCTION' | 'COMPLETED'`
+- `ProjectStatus`: `'PLANNING' | 'UNDER_CONSTRUCTION' | 'COMPLETED'` — **`PLANNING` not `PLANNED`** (matches backend enum)
 - `ProjectMilestone`: `{ id, project_id, title, description?, milestone_date, completion_percentage (0-100), created_at }`
 - `Project`: `{ id, slug, title, description?, status, location_id?, location?: ProjectLocation | null, created_at, updated_at }`
 - `ProjectDetail extends Project`: adds `milestones: ProjectMilestone[]`
@@ -789,6 +804,7 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 - **Status badge** top-left: `AVAILABLE` (gold) · `RESERVED` (amber) · `SOLD` (muted).
 - **Type badge** top-right: Residential / Commercial.
 - **`formatPKR(price: string)`**: converts decimal string → `"PKR 3.5 Cr"` / `"PKR 85 L"` notation.
+- **`formatArea(size: string, unit: AreaUnit)`**: renders `area_size` + `area_unit` (e.g. `"5 Marla"`, `"1,200 sqft"`). Uses `AREA_UNIT_LABEL` map: `SQ_FT→sqft`, `SQ_YARD→sq yd`, `MARLA→Marla`, `KANAL→Kanal`. Never reference `area_sqft` or `floors` — those fields no longer exist.
 - Specs row with inline SVG icons (no external icon library).
 - Entire card is a `<Link>` → `/properties/{slug}` for full-page navigation.
 
