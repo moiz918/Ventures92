@@ -19,6 +19,7 @@ Resulting base paths:
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    amenities,
     leads,
     locations,
     partners,
@@ -65,6 +66,12 @@ api_router.include_router(
     settings.router,
     prefix="/settings",
     tags=["Site Settings"],
+)
+
+api_router.include_router(
+    amenities.router,
+    prefix="/amenities",
+    tags=["Amenities"],
 )
 
 # ── CRM / Admin ───────────────────────────────────────────────────────────────

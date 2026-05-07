@@ -11,6 +11,8 @@ Admin:
   DELETE /properties/{id}    — delete
 """
 
+import re
+import unicodedata
 import uuid
 from decimal import Decimal
 from typing import List, Optional
@@ -22,13 +24,30 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.db.session import get_db
 from app.models.enums import AvailabilityStatus, PropertyCategory, PropertyType
 from app.models.project import Project
-from app.models.property import Property
+from app.models.property import Amenity, Property
 from app.schemas.property import (
     PropertyCreate,
     PropertyDetailResponse,
     PropertyResponse,
     PropertyUpdate,
 )
+
+
+def _slugify(text: str) -> str:
+    """Convert an arbitrary title to a URL-safe slug."""
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    text = re.sub(r'[^\w\s-]', '', text.lower())
+    return re.sub(r'[-\s]+', '-', text).strip('-') or 'property'
+
+
+def _unique_slug(base: str, db: Session) -> str:
+    """Append an incrementing counter until the slug is unique in the DB."""
+    slug = base
+    counter = 1
+    while db.scalars(select(Property).where(Property.slug == slug)).first():
+        slug = f"{base}-{counter}"
+        counter += 1
+    return slug
 
 router = APIRouter()
 
@@ -108,19 +127,25 @@ def get_property(slug: str, db: Session = Depends(get_db)) -> Property:
     summary="[Admin] Create a new property",
 )
 def create_property(payload: PropertyCreate, db: Session = Depends(get_db)) -> Property:
-    # NOTE: PropertyCreate currently inherits only the base fields (title, slug,
-    # price, area_size, area_unit, availability_status, is_featured).
-    # property_type and property_category are required DB columns — extend
-    # PropertyCreate to include them before using this endpoint in production.
-    existing = db.scalars(select(Property).where(Property.slug == payload.slug)).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"A property with slug '{payload.slug}' already exists",
-        )
+    # Resolve slug — auto-generate from title if not provided, ensure uniqueness.
+    base_slug = _slugify(payload.slug or payload.title)
+    slug = _unique_slug(base_slug, db)
 
-    prop = Property(**payload.model_dump())
+    # Build scalar columns — exclude M2M and the slug (set manually above).
+    data = payload.model_dump(exclude={'amenity_ids', 'slug'})
+    data['slug'] = slug
+
+    prop = Property(**data)
     db.add(prop)
+    db.flush()  # materialise property.id before linking M2M
+
+    # Link amenities via the property_amenities association table.
+    if payload.amenity_ids:
+        amenities = list(db.scalars(
+            select(Amenity).where(Amenity.id.in_(payload.amenity_ids))
+        ).all())
+        prop.amenities = amenities
+
     db.commit()
     db.refresh(prop)
     return prop

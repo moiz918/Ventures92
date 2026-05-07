@@ -72,12 +72,16 @@ def list_projects(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> List[Project]:
-    stmt = select(Project)
+    stmt = (
+        select(Project)
+        .options(selectinload(Project.location))
+        .order_by(Project.created_at.desc())
+    )
 
     if status is not None:
         stmt = stmt.where(Project.status == status)
 
-    stmt = stmt.order_by(Project.created_at.desc()).offset(offset).limit(limit)
+    stmt = stmt.offset(offset).limit(limit)
     return list(db.scalars(stmt).all())
 
 
