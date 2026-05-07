@@ -248,6 +248,19 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 > `session_replication_role` is intentionally absent — `ventures_user` is not
 > a superuser. FK insertion order in the script makes it unnecessary.
 
+### Re-seeding an existing database (password hash fix)
+
+The seed script uses `ON CONFLICT DO NOTHING` — rows that already exist are
+silently skipped. If users were created before the auth system was built they
+will have the old dummy hash and login will return **401**. Fix with:
+
+```bash
+docker-compose exec -T db psql -U ventures_user -d ventures92 -c \
+  "UPDATE users SET password_hash = '\$2b\$12\$7X2TC0GsTc2c/ancDp7dUe6OI7kiHsRq7MrerD2ZvqCbCW.AWbwxy' WHERE role IN ('SUPER_ADMIN', 'AGENT');"
+```
+
+This resets every admin/agent account to password `Ventures92Admin@2026`.
+
 ---
 
 ## Backend — API Layer
