@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   createProperty,
+  getAmenities,
+  type Amenity,
   type Property,
   type PropertyType,
   type PropertyCategory,
   type AvailabilityStatus,
+  type AreaUnit,
 } from '@/services/propertyService';
 import { ApiError } from '@/services/api';
 
@@ -21,13 +24,13 @@ interface FormState {
   title: string;
   description: string;
   price: string;
-  area_sqft: string;
+  area_size: string;
+  area_unit: AreaUnit;
   property_type: PropertyType;
   property_category: PropertyCategory;
   availability_status: AvailabilityStatus;
   bedrooms: string;
   bathrooms: string;
-  floors: string;
   is_featured: boolean;
 }
 
@@ -35,35 +38,22 @@ const INITIAL: FormState = {
   title: '',
   description: '',
   price: '',
-  area_sqft: '',
+  area_size: '',
+  area_unit: 'SQ_FT',
   property_type: 'RESIDENTIAL',
   property_category: 'APARTMENT',
   availability_status: 'AVAILABLE',
   bedrooms: '',
   bathrooms: '',
-  floors: '',
   is_featured: false,
 };
 
-// ── Feature flags (checkboxes) ────────────────────────────────────────────────
-const FEATURE_FLAGS: { key: keyof Pick<FormState, 'is_featured'>; label: string }[] = [
-  { key: 'is_featured', label: 'Featured Listing' },
-];
-
-const BOOLEAN_FEATURES = [
-  'Swimming Pool',
-  'Gymnasium',
-  'Parking',
-  'Generator Backup',
-  'Security / CCTV',
-  'Elevator / Lift',
-  'Rooftop Access',
-  'Community Park',
-  'Smart Home',
-  'Solar Energy',
-  'Central AC',
-  'Servants Quarters',
-] as const;
+const AREA_UNIT_LABELS: Record<AreaUnit, string> = {
+  SQ_FT:    'Sq. Ft',
+  SQ_YARD:  'Sq. Yard',
+  MARLA:    'Marla',
+  KANAL:    'Kanal',
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const labelStyle: React.CSSProperties = {
@@ -93,14 +83,7 @@ function inputStyle(focused: boolean): React.CSSProperties {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        marginBottom: '20px',
-      }}
-    >
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
       <p
         style={{
           fontFamily: 'var(--font-manrope)',
@@ -124,9 +107,17 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 export default function PropertyForm({ onClose, onSuccess }: Props) {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [focused, setFocused] = useState('');
-  const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(new Set());
+  const [amenities, setAmenities] = useState<Amenity[]>([]);
+  const [selectedAmenityIds, setSelectedAmenityIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load amenities from the API on mount
+  useEffect(() => {
+    getAmenities().then(setAmenities).catch(() => {
+      // Non-fatal — form still works, amenity section just stays empty
+    });
+  }, []);
 
   const set = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -134,11 +125,11 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
     [],
   );
 
-  const toggleFeature = useCallback((name: string) => {
-    setSelectedFeatures((prev) => {
+  const toggleAmenity = useCallback((id: string) => {
+    setSelectedAmenityIds((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
@@ -155,12 +146,13 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
         property_type: form.property_type,
         property_category: form.property_category,
         price: form.price.trim(),
-        area_sqft: form.area_sqft.trim() || undefined,
+        area_size: form.area_size.trim(),
+        area_unit: form.area_unit,
         bedrooms: form.bedrooms ? parseInt(form.bedrooms, 10) : undefined,
         bathrooms: form.bathrooms ? parseInt(form.bathrooms, 10) : undefined,
-        floors: form.floors ? parseInt(form.floors, 10) : undefined,
         availability_status: form.availability_status,
         is_featured: form.is_featured,
+        amenity_ids: selectedAmenityIds.size > 0 ? Array.from(selectedAmenityIds) : undefined,
       };
 
       const created = await createProperty(payload);
@@ -179,23 +171,11 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
 
   return (
     /* Overlay */
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    >
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.65)',
-        }}
+        style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.65)' }}
       />
 
       {/* Panel */}
@@ -226,44 +206,16 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
           }}
         >
           <div>
-            <p
-              style={{
-                fontFamily: 'var(--font-manrope)',
-                fontSize: '9px',
-                fontWeight: 700,
-                letterSpacing: '0.2em',
-                textTransform: 'uppercase',
-                color: '#C9A84C',
-                margin: '0 0 2px',
-              }}
-            >
+            <p style={{ fontFamily: 'var(--font-manrope)', fontSize: '9px', fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#C9A84C', margin: '0 0 2px' }}>
               Admin
             </p>
-            <p
-              style={{
-                fontFamily: 'var(--font-epilogue)',
-                fontSize: '15px',
-                fontWeight: 700,
-                color: '#e9e1d7',
-                margin: 0,
-              }}
-            >
+            <p style={{ fontFamily: 'var(--font-epilogue)', fontSize: '15px', fontWeight: 700, color: '#e9e1d7', margin: 0 }}>
               Add New Property
             </p>
           </div>
           <button
             onClick={onClose}
-            style={{
-              width: '36px',
-              height: '36px',
-              border: '1px solid #4d4637',
-              backgroundColor: 'transparent',
-              color: '#99907e',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
+            style={{ width: '36px', height: '36px', border: '1px solid #4d4637', backgroundColor: 'transparent', color: '#99907e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
             aria-label="Close panel"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -314,16 +266,12 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                   onChange={(e) => set('description', e.target.value)}
                   onFocus={() => setFocused('description')}
                   onBlur={() => setFocused('')}
-                  style={{
-                    ...inputStyle(focused === 'description'),
-                    resize: 'vertical',
-                    minHeight: '100px',
-                  }}
+                  style={{ ...inputStyle(focused === 'description'), resize: 'vertical', minHeight: '100px' }}
                   placeholder="Detailed property description…"
                 />
               </div>
 
-              {/* Price + Area */}
+              {/* Price + Area Size */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Price (PKR) *</label>
@@ -341,23 +289,42 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Area (sqft)</label>
+                  <label style={labelStyle}>Area Size *</label>
                   <input
+                    required
                     type="number"
                     min="0"
                     step="0.01"
-                    value={form.area_sqft}
-                    onChange={(e) => set('area_sqft', e.target.value)}
-                    onFocus={() => setFocused('area_sqft')}
+                    value={form.area_size}
+                    onChange={(e) => set('area_size', e.target.value)}
+                    onFocus={() => setFocused('area_size')}
                     onBlur={() => setFocused('')}
-                    style={inputStyle(focused === 'area_sqft')}
-                    placeholder="e.g. 2400"
+                    style={inputStyle(focused === 'area_size')}
+                    placeholder="e.g. 10"
                   />
                 </div>
               </div>
 
-              {/* Beds + Baths + Floors */}
+              {/* Area Unit + Bedrooms + Bathrooms */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={labelStyle}>Area Unit *</label>
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      required
+                      value={form.area_unit}
+                      onChange={(e) => set('area_unit', e.target.value as AreaUnit)}
+                      onFocus={() => setFocused('area_unit')}
+                      onBlur={() => setFocused('')}
+                      style={{ ...inputStyle(focused === 'area_unit'), appearance: 'none', WebkitAppearance: 'none', paddingRight: '36px', cursor: 'pointer' }}
+                    >
+                      {(Object.keys(AREA_UNIT_LABELS) as AreaUnit[]).map((u) => (
+                        <option key={u} value={u}>{AREA_UNIT_LABELS[u]}</option>
+                      ))}
+                    </select>
+                    <ChevronIcon />
+                  </div>
+                </div>
                 <div>
                   <label style={labelStyle}>Bedrooms</label>
                   <input
@@ -384,19 +351,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                     placeholder="2"
                   />
                 </div>
-                <div>
-                  <label style={labelStyle}>Floors</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={form.floors}
-                    onChange={(e) => set('floors', e.target.value)}
-                    onFocus={() => setFocused('floors')}
-                    onBlur={() => setFocused('')}
-                    style={inputStyle(focused === 'floors')}
-                    placeholder="1"
-                  />
-                </div>
               </div>
             </div>
           </section>
@@ -417,13 +371,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                       onChange={(e) => set('property_type', e.target.value as PropertyType)}
                       onFocus={() => setFocused('property_type')}
                       onBlur={() => setFocused('')}
-                      style={{
-                        ...inputStyle(focused === 'property_type'),
-                        appearance: 'none',
-                        WebkitAppearance: 'none',
-                        paddingRight: '36px',
-                        cursor: 'pointer',
-                      }}
+                      style={{ ...inputStyle(focused === 'property_type'), appearance: 'none', WebkitAppearance: 'none', paddingRight: '36px', cursor: 'pointer' }}
                     >
                       <option value="RESIDENTIAL">Residential</option>
                       <option value="COMMERCIAL">Commercial</option>
@@ -440,13 +388,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                       onChange={(e) => set('property_category', e.target.value as PropertyCategory)}
                       onFocus={() => setFocused('property_category')}
                       onBlur={() => setFocused('')}
-                      style={{
-                        ...inputStyle(focused === 'property_category'),
-                        appearance: 'none',
-                        WebkitAppearance: 'none',
-                        paddingRight: '36px',
-                        cursor: 'pointer',
-                      }}
+                      style={{ ...inputStyle(focused === 'property_category'), appearance: 'none', WebkitAppearance: 'none', paddingRight: '36px', cursor: 'pointer' }}
                     >
                       <option value="APARTMENT">Apartment</option>
                       <option value="HOUSE">House</option>
@@ -469,13 +411,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                     onChange={(e) => set('availability_status', e.target.value as AvailabilityStatus)}
                     onFocus={() => setFocused('availability_status')}
                     onBlur={() => setFocused('')}
-                    style={{
-                      ...inputStyle(focused === 'availability_status'),
-                      appearance: 'none',
-                      WebkitAppearance: 'none',
-                      paddingRight: '36px',
-                      cursor: 'pointer',
-                    }}
+                    style={{ ...inputStyle(focused === 'availability_status'), appearance: 'none', WebkitAppearance: 'none', paddingRight: '36px', cursor: 'pointer' }}
                   >
                     <option value="AVAILABLE">Available</option>
                     <option value="RESERVED">Reserved</option>
@@ -501,71 +437,67 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
               />
             </div>
 
-            {/* Amenity grid */}
-            <div>
-              <p style={{ ...labelStyle, marginBottom: '12px' }}>Amenities</p>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '8px',
-                }}
-              >
-                {BOOLEAN_FEATURES.map((name) => {
-                  const checked = selectedFeatures.has(name);
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => toggleFeature(name)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '10px 12px',
-                        border: `1px solid ${checked ? '#C9A84C' : '#4d4637'}`,
-                        backgroundColor: checked ? 'rgba(201,168,76,0.08)' : 'transparent',
-                        cursor: 'pointer',
-                        transition: 'border-color 0.15s, background-color 0.15s',
-                        textAlign: 'left',
-                      }}
-                    >
-                      <span
+            {/* Amenity grid — loaded from GET /amenities/ */}
+            {amenities.length > 0 && (
+              <div>
+                <p style={{ ...labelStyle, marginBottom: '12px' }}>Amenities</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {amenities.map((amenity) => {
+                    const checked = selectedAmenityIds.has(amenity.id);
+                    return (
+                      <button
+                        key={amenity.id}
+                        type="button"
+                        onClick={() => toggleAmenity(amenity.id)}
                         style={{
-                          width: '14px',
-                          height: '14px',
-                          border: `1px solid ${checked ? '#C9A84C' : '#4d4637'}`,
-                          backgroundColor: checked ? '#C9A84C' : 'transparent',
-                          flexShrink: 0,
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'background-color 0.15s',
+                          gap: '8px',
+                          padding: '10px 12px',
+                          border: `1px solid ${checked ? '#C9A84C' : '#4d4637'}`,
+                          backgroundColor: checked ? 'rgba(201,168,76,0.08)' : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'border-color 0.15s, background-color 0.15s',
+                          textAlign: 'left',
                         }}
                       >
-                        {checked && (
-                          <svg width="8" height="6" viewBox="0 0 8 6" fill="none" aria-hidden="true">
-                            <path d="M1 3l2 2 4-4" stroke="#1A1A1A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-manrope)',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          letterSpacing: '0.04em',
-                          color: checked ? '#C9A84C' : '#99907e',
-                          transition: 'color 0.15s',
-                        }}
-                      >
-                        {name}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <span
+                          style={{
+                            width: '14px',
+                            height: '14px',
+                            border: `1px solid ${checked ? '#C9A84C' : '#4d4637'}`,
+                            backgroundColor: checked ? '#C9A84C' : 'transparent',
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'background-color 0.15s',
+                          }}
+                        >
+                          {checked && (
+                            <svg width="8" height="6" viewBox="0 0 8 6" fill="none" aria-hidden="true">
+                              <path d="M1 3l2 2 4-4" stroke="#1A1A1A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-manrope)',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                            color: checked ? '#C9A84C' : '#99907e',
+                            transition: 'color 0.15s',
+                          }}
+                        >
+                          {amenity.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </section>
 
           {/* Error */}
@@ -624,7 +556,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
           </button>
           <button
             type="submit"
-            form="property-form"
             disabled={submitting}
             onClick={handleSubmit as unknown as React.MouseEventHandler<HTMLButtonElement>}
             style={{
@@ -670,14 +601,7 @@ function ChevronIcon() {
       viewBox="0 0 12 12"
       fill="none"
       aria-hidden="true"
-      style={{
-        position: 'absolute',
-        right: '12px',
-        top: '50%',
-        transform: 'translateY(-50%)',
-        pointerEvents: 'none',
-        color: '#4d4637',
-      }}
+      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#4d4637' }}
     >
       <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -713,27 +637,10 @@ function ToggleRow({
       }}
     >
       <div>
-        <p
-          style={{
-            fontFamily: 'var(--font-manrope)',
-            fontSize: '12px',
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            color: checked ? '#C9A84C' : '#d0c5b2',
-            margin: '0 0 2px',
-          }}
-        >
+        <p style={{ fontFamily: 'var(--font-manrope)', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: checked ? '#C9A84C' : '#d0c5b2', margin: '0 0 2px' }}>
           {label}
         </p>
-        <p
-          style={{
-            fontFamily: 'var(--font-manrope)',
-            fontSize: '11px',
-            color: '#4d4637',
-            margin: 0,
-          }}
-        >
+        <p style={{ fontFamily: 'var(--font-manrope)', fontSize: '11px', color: '#4d4637', margin: 0 }}>
           {description}
         </p>
       </div>

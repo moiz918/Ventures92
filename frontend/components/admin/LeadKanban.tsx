@@ -10,17 +10,21 @@ import {
 
 // ── Column config ─────────────────────────────────────────────────────────────
 const COLUMNS: { status: LeadStatus; label: string; accent: string }[] = [
-  { status: 'NEW',       label: 'New',        accent: '#99907e' },
-  { status: 'CONTACTED', label: 'Contacted',  accent: '#C9A84C' },
-  { status: 'QUALIFIED', label: 'Qualified',  accent: '#1D9E75' },
-  { status: 'CLOSED',    label: 'Closed',     accent: '#4d4637' },
+  { status: 'NEW',         label: 'New',         accent: '#99907e' },
+  { status: 'CONTACTED',   label: 'Contacted',   accent: '#C9A84C' },
+  { status: 'IN_PROGRESS', label: 'In Progress', accent: '#E8A020' },
+  { status: 'QUALIFIED',   label: 'Qualified',   accent: '#1D9E75' },
+  { status: 'LOST',        label: 'Lost',        accent: '#ff4444' },
+  { status: 'CLOSED',      label: 'Closed',      accent: '#4d4637' },
 ];
 
 const STATUS_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
-  NEW:       ['CONTACTED'],
-  CONTACTED: ['NEW', 'QUALIFIED'],
-  QUALIFIED: ['CONTACTED', 'CLOSED'],
-  CLOSED:    ['QUALIFIED'],
+  NEW:         ['CONTACTED'],
+  CONTACTED:   ['IN_PROGRESS', 'LOST'],
+  IN_PROGRESS: ['QUALIFIED', 'LOST'],
+  QUALIFIED:   ['CLOSED', 'LOST'],
+  LOST:        ['NEW'],
+  CLOSED:      [],
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

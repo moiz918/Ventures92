@@ -94,7 +94,7 @@ function Navbar() {
 
         {/* CTA */}
         <Link
-          href="/consultation"
+          href="/contact"
           className="hidden md:inline-block bg-gold text-charcoal font-bold uppercase hover:bg-gold-hover transition-colors duration-200"
           style={{
             fontFamily: "var(--font-manrope)",
@@ -135,7 +135,7 @@ const FOOTER_COLS = [
       { href: "/about",      label: "About Us"           },
       { href: "/partners",   label: "Corporate Partners" },
       { href: "/contact",    label: "Contact"            },
-      { href: "/dashboard",  label: "Admin Portal"       },
+      { href: "/admin/dashboard", label: "Admin Portal"  },
     ],
   },
 ] as const;

@@ -93,7 +93,7 @@ docker-compose up --build --no-deps frontend
 | Service         | URL                              | Notes                        |
 |-----------------|----------------------------------|------------------------------|
 | Public Portal   | http://localhost:3000            | Next.js with Fast Refresh    |
-| Admin Dashboard | http://localhost:3000/dashboard  | (route to be built)          |
+| Admin Dashboard | http://localhost:3000/admin/dashboard  | Lead Kanban + property management |
 | FastAPI Docs    | http://localhost:8000/api/docs   | Swagger UI                   |
 | FastAPI ReDoc   | http://localhost:8000/api/redoc  | Alternative API docs         |
 | Health Check    | http://localhost:8000/health     | Returns `{"status": "ok"}`   |
@@ -280,6 +280,10 @@ docker-compose exec -T db psql -U ventures_user -d ventures92 < backend/seed.sql
 | `DELETE` | `/api/v1/partners/{id}` | [Admin] Remove a partner |
 | **Locations** | | |
 | `GET` | `/api/v1/locations/` | All cities + societies for search dropdowns |
+| **Amenities** | | |
+| `GET` | `/api/v1/amenities/` | All amenities ordered by name — used by PropertyForm |
+| **Amenities** | | |
+| `GET` | `/api/v1/amenities/` | All amenities ordered by name (for admin PropertyForm) |
 
 ### Query parameters — `GET /api/v1/properties/`
 
@@ -486,7 +490,7 @@ frontend/
     globals.css               # Tailwind v4 @theme tokens + base styles (DO NOT add boilerplate)
     layout.tsx                # Root layout — Navbar + Footer + WhatsApp FAB (Server Components)
     page.tsx                  # Homepage — async RSC, fetches featured properties, three render states
-    (admin)/
+    admin/
       layout.tsx              # Admin route group layout — sticky sidebar + header, no URL change
       dashboard/
         page.tsx              # Lead Management Pipeline — embeds LeadKanban
@@ -503,9 +507,9 @@ frontend/
     contact/
       page.tsx                # Lead capture — two-column layout, trust grid, contact details
     login/
-      page.tsx                # "use client" — split-screen auth, email+password, mock → /dashboard
+      page.tsx                # "use client" — split-screen auth, email+password, mock → /admin/dashboard
     signup/
-      page.tsx                # "use client" — split-screen auth, name+email+password, mock → /dashboard
+      page.tsx                # "use client" — split-screen auth, name+email+password, mock → /admin/dashboard
   components/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
     CorporatePartners.tsx     # Async Server Component — CSS marquee carousel, getPartners(), logo/name fallback
@@ -523,6 +527,8 @@ frontend/
     leadService.ts            # submitLead(), getLeads(), updateLeadStatus() + all TS interfaces
     locationService.ts        # getLocations() + Location interface — cities/societies for search dropdowns
     partnerService.ts         # getPartners() + Partner interface — active partners ordered by display_order
+    # NOTE: propertyService.ts uses area_size (Decimal string) + area_unit (AreaUnit enum), NOT area_sqft
+    # NOTE: projectService.ts ProjectStatus uses 'PLANNING' (not 'PLANNED') to match backend enum
     projectService.ts         # getProjects(), getProjectBySlug() + Project, ProjectDetail, ProjectMilestone interfaces
     propertyService.ts        # getProperties(), getPropertyBySlug(), createProperty(), deleteProperty() + all TS interfaces
 ```
@@ -599,7 +605,7 @@ Both pages share an identical split-screen layout pattern:
 - **Right panel** (`max-width: 520px` login / `540px` signup): `backgroundColor: #16130d`, centered flex column, `padding: 48px 56px`. Contains mobile logo (hidden `lg:`), form header, the form, and a bottom "Secure Authentication" footer.
 - **Input style**: `backgroundColor: '#100e08'` (darker than global surface), `border: 1px solid #4d4637` → `#C9A84C` on focus. Icon slot `paddingLeft: 42px` for mail/lock SVGs; icon color transitions `#4d4637` → `#C9A84C` on focus.
 - **Password field**: `type` toggles `"password"` / `"text"` via `showPassword` state; EyeIcon / EyeOffIcon button absolutely positioned at right.
-- **Mock submit**: `setTimeout(700ms)` then `router.push('/dashboard')`. Replace with real auth call when backend is ready.
+- **Mock submit**: `setTimeout(700ms)` then `router.push('/admin/dashboard')`. Replace with real auth call when backend is ready.
 - **Login extras**: "Forgot password?" link aligned right of label; divider + "Create an Account" ghost button below form; link to `/signup`.
 - **Signup extras**: name fields in 2-col grid; password hint text; custom styled checkbox for terms agreement; link to `/login`.
 - **No real auth logic** — state is ephemeral, no tokens stored. Auth implementation is a future phase.
@@ -632,11 +638,11 @@ Both pages share an identical split-screen layout pattern:
 - `updateLeadStatus(id, status)`: `api.put<LeadResponse>('/leads/{id}/status', { status })` — admin only.
 - **IMPORTANT**: always use `first_name` + `last_name` — never `full_name` (backend schema constraint).
 
-### Admin Core — `app/(admin)/`
+### Admin Core — `app/admin/`
 
-The `(admin)` route group wraps all admin pages with a shared sidebar + header layout. It renders **inside** the root layout's `<main className="flex-1 pt-16">`, so the fixed navbar is still present above.
+The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace with a shared sidebar + header layout. It renders **inside** the root layout's `<main className="flex-1 pt-16">`, so the fixed navbar is still present above.
 
-#### `app/(admin)/layout.tsx`
+#### `app/admin/layout.tsx`
 
 - **Sidebar** (`position: sticky; top: 0; height: calc(100vh - 64px)`): `width: 240px`, `backgroundColor: #100e08`, `border-right: 1px solid #4d4637`.
 - Nav items: Dashboard · Properties · Projects · Settings — each as `<Link>` with SVG icon + uppercase Manrope label.
@@ -663,13 +669,13 @@ The `(admin)` route group wraps all admin pages with a shared sidebar + header l
 - Loading state: skeleton columns at 40% opacity with CSS pulse animation.
 - Error state: inline muted error card.
 
-#### `app/(admin)/dashboard/page.tsx`
+#### `app/admin/dashboard/page.tsx`
 
 - Server Component; renders a page header ("CRM" eyebrow + "Lead Management Pipeline" H1) then `<LeadKanban />`.
 
-### Admin Property Management — `app/(admin)/properties/`
+### Admin Property Management — `app/admin/properties/`
 
-#### `app/(admin)/properties/page.tsx` (`"use client"`)
+#### `app/admin/properties/page.tsx` (`"use client"`)
 
 - Fetches all properties via `getProperties({ limit: 100 })` on mount.
 - **Stat row**: 4 `StatCard` cells — All Listings / Available / Reserved / Sold (Space Grotesk gold values).

@@ -7,13 +7,13 @@ import { ApiError } from '@/services/api';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; borderColor: string }> = {
-  PLANNED:            { label: 'Upcoming',          color: '#99907e', borderColor: '#4d4637'  },
+  PLANNING:           { label: 'Upcoming',          color: '#99907e', borderColor: '#4d4637'  },
   UNDER_CONSTRUCTION: { label: 'Under Construction', color: '#E8A020', borderColor: '#E8A020' },
   COMPLETED:          { label: 'Delivered',          color: '#1D9E75', borderColor: '#1D9E75' },
 };
 
 const HERO_GRADIENTS: Record<ProjectStatus, string> = {
-  PLANNED:            'linear-gradient(160deg, #1e1b15 0%, #221f19 100%)',
+  PLANNING:           'linear-gradient(160deg, #1e1b15 0%, #221f19 100%)',
   UNDER_CONSTRUCTION: 'linear-gradient(160deg, #1e1408 0%, #241a0e 100%)',
   COMPLETED:          'linear-gradient(160deg, #0d1614 0%, #0e1c16 100%)',
 };
@@ -55,7 +55,7 @@ export default async function ProjectDetailPage({
   const status = STATUS_CONFIG[project.status];
   const heroGradient = HERO_GRADIENTS[project.status];
 
-  const completedCount = project.milestones.filter((m) => m.completion_percentage >= 100).length;
+  const completedCount = project.milestones.filter((m) => (m.completion_percentage ?? 0) >= 100).length;
 
   return (
     <div style={{ backgroundColor: '#16130d', minHeight: '100vh' }}>

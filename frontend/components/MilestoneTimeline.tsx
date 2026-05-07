@@ -85,7 +85,7 @@ function MilestoneNode({
   isLast: boolean;
   index: number;
 }) {
-  const pct = milestone.completion_percentage;
+  const pct = milestone.completion_percentage ?? 0;
   const isDone = pct >= 100;
   const isActive = pct > 0 && pct < 100;
 
@@ -272,9 +272,9 @@ export default function MilestoneTimeline({
     return <EmptyTimeline />;
   }
 
-  const completed = milestones.filter((m) => m.completion_percentage >= 100).length;
+  const completed = milestones.filter((m) => (m.completion_percentage ?? 0) >= 100).length;
   const overallPct = Math.round(
-    milestones.reduce((sum, m) => sum + m.completion_percentage, 0) / milestones.length,
+    milestones.reduce((sum, m) => sum + (m.completion_percentage ?? 0), 0) / milestones.length,
   );
 
   return (

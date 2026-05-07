@@ -1,5 +1,17 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
+// In Docker, RSC (server-side) fetches must use the internal service name.
+// Browser (client component) fetches use the public-facing URL.
+//
+// docker-compose exports both:
+//   NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1   (browser)
+//   INTERNAL_API_URL=http://backend:8000/api/v1        (server, Docker network)
+const isBrowser = typeof window !== 'undefined';
+
+const API_BASE_URL = isBrowser
+  ? (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1')
+  : (process.env.INTERNAL_API_URL
+      ?? process.env.API_URL
+      ?? process.env.NEXT_PUBLIC_API_URL
+      ?? 'http://localhost:8000/api/v1');
 
 export class ApiError extends Error {
   constructor(
@@ -14,6 +26,9 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
+    // Default: never serve stale data for this platform.
+    // Individual callers can pass { next: { revalidate: N } } to opt into ISR.
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
@@ -27,7 +42,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       const body = await res.json();
       if (body?.detail) detail = String(body.detail);
     } catch {
-      // ignore json parse errors
+      // ignore json parse errors on error responses
     }
     throw new ApiError(res.status, res.statusText, detail);
   }

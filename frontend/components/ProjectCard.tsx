@@ -3,14 +3,14 @@ import { type Project, type ProjectStatus } from '@/services/projectService';
 
 // ── Status config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; borderColor: string }> = {
-  PLANNED:           { label: 'Upcoming',          color: '#99907e', borderColor: '#4d4637'  },
-  UNDER_CONSTRUCTION:{ label: 'Under Construction', color: '#E8A020', borderColor: '#E8A020' },
-  COMPLETED:         { label: 'Delivered',          color: '#1D9E75', borderColor: '#1D9E75' },
+  PLANNING:           { label: 'Upcoming',          color: '#99907e', borderColor: '#4d4637'  },
+  UNDER_CONSTRUCTION: { label: 'Under Construction', color: '#E8A020', borderColor: '#E8A020' },
+  COMPLETED:          { label: 'Delivered',          color: '#1D9E75', borderColor: '#1D9E75' },
 };
 
 // ── Gradient placeholders ─────────────────────────────────────────────────────
 const GRADIENTS: Record<ProjectStatus, string> = {
-  PLANNED:            'linear-gradient(145deg, #1e1b15 0%, #221f19 60%, #2d2a23 100%)',
+  PLANNING:           'linear-gradient(145deg, #1e1b15 0%, #221f19 60%, #2d2a23 100%)',
   UNDER_CONSTRUCTION: 'linear-gradient(145deg, #1e1408 0%, #241a0e 60%, #2d1e0a 100%)',
   COMPLETED:          'linear-gradient(145deg, #0d1614 0%, #0e1c16 60%, #0f2018 100%)',
 };

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { getPropertyBySlug, type PropertyDetail, type PropertyCategory } from '@/services/propertyService';
+import { getPropertyBySlug, type PropertyDetail, type PropertyCategory, type AreaUnit } from '@/services/propertyService';
 import { ApiError } from '@/services/api';
 import PropertyGallery from '@/components/PropertyGallery';
 
@@ -28,6 +28,21 @@ const CATEGORY_LABEL: Record<PropertyCategory, string> = {
   OFFICE:    'Office',
   SHOP:      'Shop',
 };
+
+// ── Area display ──────────────────────────────────────────────────────────────
+const AREA_UNIT_LABEL: Record<AreaUnit, string> = {
+  SQ_FT:   'sq ft',
+  SQ_YARD: 'sq yard',
+  MARLA:   'Marla',
+  KANAL:   'Kanal',
+};
+
+function formatArea(size: string, unit: AreaUnit): string {
+  const n = parseFloat(size);
+  if (isNaN(n)) return '';
+  const rounded = Number.isInteger(n) ? n.toLocaleString('en-PK') : n.toFixed(2);
+  return `${rounded} ${AREA_UNIT_LABEL[unit]}`;
+}
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadProperty(slug: string): Promise<PropertyDetail> {
@@ -72,7 +87,7 @@ export default async function PropertyDetailPage({
     SOLD:      { bg: '#2d2a23', color: '#99907e' },
   }[property.availability_status];
 
-  const hasSpecs = property.bedrooms || property.bathrooms || property.area_sqft || property.floors;
+  const hasSpecs = property.bedrooms != null || property.bathrooms != null || property.area_size != null;
 
   return (
     <div style={{ backgroundColor: '#16130d', minHeight: '100vh' }}>
@@ -228,11 +243,8 @@ export default async function PropertyDetailPage({
                 {property.bathrooms != null && (
                   <SpecCell label="Bathrooms" value={String(property.bathrooms)} icon={<BathIcon />} />
                 )}
-                {property.area_sqft != null && (
-                  <SpecCell label="Area" value={`${parseFloat(property.area_sqft).toLocaleString('en-PK')} sq ft`} icon={<AreaIcon />} />
-                )}
-                {property.floors != null && (
-                  <SpecCell label="Floors" value={String(property.floors)} icon={<FloorsIcon />} />
+                {property.area_size != null && (
+                  <SpecCell label="Area" value={formatArea(property.area_size, property.area_unit)} icon={<AreaIcon />} />
                 )}
               </div>
             )}
@@ -553,12 +565,3 @@ function AreaIcon() {
   );
 }
 
-function FloorsIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M10 3L17 7V17H3V7L10 3Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-      <line x1="3" y1="11" x2="17" y2="11" stroke="currentColor" strokeWidth="1.25" strokeOpacity="0.5" />
-      <rect x="8" y="14" width="4" height="3" stroke="currentColor" strokeWidth="1.25" />
-    </svg>
-  );
-}

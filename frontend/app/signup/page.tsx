@@ -50,7 +50,7 @@ export default function SignUpPage() {
     // Mock registration — replace with real API call when auth backend is ready
     await new Promise((r) => setTimeout(r, 700));
     setIsSubmitting(false);
-    router.push('/dashboard');
+    router.push('/admin/dashboard');
   }
 
   const isFocused = (name: string) => focused === name;

@@ -4,6 +4,7 @@ import { api } from './api';
 export type PropertyType = 'RESIDENTIAL' | 'COMMERCIAL';
 export type PropertyCategory = 'PLOT' | 'HOUSE' | 'APARTMENT' | 'OFFICE' | 'SHOP';
 export type AvailabilityStatus = 'AVAILABLE' | 'RESERVED' | 'SOLD';
+export type AreaUnit = 'SQ_FT' | 'SQ_YARD' | 'MARLA' | 'KANAL';
 
 // ── Core entities ──────────────────────────────────────────────────────────
 export interface PropertyMedia {
@@ -18,7 +19,8 @@ export interface PropertyMedia {
 export interface Amenity {
   id: string;
   name: string;
-  icon_url?: string | null;
+  /** Identifier for an icon (e.g. "pool", "gym") — used for SVG/icon lookup */
+  icon_name?: string | null;
 }
 
 export interface Property {
@@ -30,11 +32,12 @@ export interface Property {
   property_category: PropertyCategory;
   /** Decimal string from backend — use as-is to avoid float precision loss */
   price: string;
-  /** Decimal string */
-  area_sqft?: string | null;
+  /** Decimal string e.g. "2400.00" */
+  area_size: string;
+  area_unit: AreaUnit;
   bedrooms?: number | null;
   bathrooms?: number | null;
-  floors?: number | null;
+  address_details?: string | null;
   availability_status: AvailabilityStatus;
   is_featured: boolean;
   project_id?: string | null;
@@ -66,10 +69,6 @@ export interface PropertyListParams {
 
 // ── Service functions ──────────────────────────────────────────────────────
 
-/**
- * Fetch a paginated/filtered list of properties.
- * Returns the raw array returned by GET /properties/.
- */
 export async function getProperties(params?: PropertyListParams): Promise<Property[]> {
   const qs = new URLSearchParams();
   if (params) {
@@ -83,29 +82,31 @@ export async function getProperties(params?: PropertyListParams): Promise<Proper
   return api.get<Property[]>(`/properties/${query}`);
 }
 
-/**
- * Fetch a single property by slug.
- * Eager-loads media + amenities (PropertyDetail).
- */
 export async function getPropertyBySlug(slug: string): Promise<PropertyDetail> {
   return api.get<PropertyDetail>(`/properties/${encodeURIComponent(slug)}`);
+}
+
+export async function getAmenities(): Promise<Amenity[]> {
+  return api.get<Amenity[]>('/amenities/');
 }
 
 // ── Admin mutations ────────────────────────────────────────────────────────
 
 export interface PropertyCreatePayload {
   title: string;
+  /** Auto-generated server-side if omitted */
   slug?: string;
   description?: string;
   property_type: PropertyType;
   property_category: PropertyCategory;
   /** Decimal string — e.g. "7500000" */
   price: string;
-  /** Decimal string */
-  area_sqft?: string;
+  /** Decimal string e.g. "2400" */
+  area_size: string;
+  area_unit: AreaUnit;
   bedrooms?: number;
   bathrooms?: number;
-  floors?: number;
+  address_details?: string;
   availability_status: AvailabilityStatus;
   is_featured: boolean;
   project_id?: string;

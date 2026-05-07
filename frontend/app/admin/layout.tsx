@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 // ── Nav items ─────────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
   {
-    href: '/dashboard',
+    href: '/admin/dashboard',
     label: 'Dashboard',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -16,7 +16,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/properties',
+    href: '/admin/properties',
     label: 'Properties',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -25,7 +25,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/projects',
+    href: '/admin/projects',
     label: 'Projects',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -36,7 +36,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/dashboard/settings',
+    href: '/admin/settings',
     label: 'Settings',
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

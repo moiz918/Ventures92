@@ -49,7 +49,7 @@ export default function LoginPage() {
     // Mock auth — replace with real API call when auth backend is ready
     await new Promise((r) => setTimeout(r, 700));
     setIsSubmitting(false);
-    router.push('/dashboard');
+    router.push('/admin/dashboard');
   }
 
   return (

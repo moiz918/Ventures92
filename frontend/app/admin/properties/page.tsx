@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   getProperties,
   deleteProperty,
@@ -66,12 +67,14 @@ function StatCard({ value, label }: { value: number; label: string }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function AdminPropertiesPage() {
+  const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchProperties = useCallback(async () => {
     setLoading(true);
@@ -93,19 +96,29 @@ export default function AdminPropertiesPage() {
   const handleDelete = useCallback(async (id: string) => {
     setDeletingId(id);
     setConfirmDeleteId(null);
+    setActionError(null);
     try {
       await deleteProperty(id);
       setProperties((prev) => prev.filter((p) => p.id !== id));
-    } catch {
-      // silently fail — property stays in list
+      // Invalidate RSC cache so /properties reflects the deletion.
+      router.refresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? `Failed to delete: ${err.message}`
+          : 'Failed to delete property.',
+      );
     } finally {
       setDeletingId(null);
     }
-  }, []);
+  }, [router]);
 
   const handleFormSuccess = useCallback((newProp: Property) => {
     setProperties((prev) => [newProp, ...prev]);
-  }, []);
+    setActionError(null);
+    // Invalidate RSC cache so /properties + homepage feature grid update.
+    router.refresh();
+  }, [router]);
 
   // Stats
   const available = properties.filter((p) => p.availability_status === 'AVAILABLE').length;
@@ -182,6 +195,45 @@ export default function AdminPropertiesPage() {
             Add New Property
           </button>
         </div>
+
+        {/* ── Action error banner ──────────────────────────────── */}
+        {actionError && (
+          <div
+            style={{
+              border: '1px solid #4d4637',
+              borderLeft: '3px solid #C9A84C',
+              backgroundColor: '#1e1b15',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+            }}
+          >
+            <p style={{ fontFamily: 'var(--font-manrope)', fontSize: '13px', color: '#d0c5b2', margin: 0 }}>
+              {actionError}
+            </p>
+            <button
+              onClick={() => setActionError(null)}
+              style={{
+                fontFamily: 'var(--font-manrope)',
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: '#99907e',
+                backgroundColor: 'transparent',
+                border: '1px solid #4d4637',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* ── Stats row ─────────────────────────────────────────── */}
         <div
@@ -391,12 +443,20 @@ export default function AdminPropertiesPage() {
                         </>
                       ) : (
                         <>
-                          <button
-                            style={actionBtnStyle('#C9A84C', 'transparent')}
-                            title="Edit"
+                          <a
+                            href={`/properties/${p.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              ...actionBtnStyle('#C9A84C', 'transparent'),
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                            title="View public listing"
                           >
-                            Edit
-                          </button>
+                            View
+                          </a>
                           <button
                             onClick={() => setConfirmDeleteId(p.id)}
                             disabled={isDeleting}

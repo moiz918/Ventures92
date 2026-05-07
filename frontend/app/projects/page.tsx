@@ -5,7 +5,7 @@ import ProjectCard from '@/components/ProjectCard';
 export const metadata: Metadata = {
   title: 'Developments',
   description:
-    'Explore our exclusive residential and commercial developments across Pakistan's most prestigious addresses.',
+    "Explore our exclusive residential and commercial developments across Pakistan's most prestigious addresses.",
 };
 
 // ── Status filter tabs ────────────────────────────────────────────────────────
@@ -13,7 +13,7 @@ const FILTERS: { value: ProjectStatus | null; label: string }[] = [
   { value: null,               label: 'All Developments'   },
   { value: 'UNDER_CONSTRUCTION', label: 'Under Construction' },
   { value: 'COMPLETED',         label: 'Delivered'           },
-  { value: 'PLANNED',           label: 'Upcoming'            },
+  { value: 'PLANNING',          label: 'Upcoming'            },
 ];
 
 // ── Stats: computed from project list ─────────────────────────────────────────
@@ -86,7 +86,7 @@ export default async function ProjectsPage() {
     total:             projects.length,
     underConstruction: projects.filter((p) => p.status === 'UNDER_CONSTRUCTION').length,
     completed:         projects.filter((p) => p.status === 'COMPLETED').length,
-    planned:           projects.filter((p) => p.status === 'PLANNED').length,
+    planned:           projects.filter((p) => p.status === 'PLANNING').length,
   };
 
   return (

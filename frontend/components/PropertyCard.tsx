@@ -1,5 +1,20 @@
 import Link from 'next/link';
-import type { Property } from '@/services/propertyService';
+import type { Property, AreaUnit } from '@/services/propertyService';
+
+// ── Area formatting ─────────────────────────────────────────────────────────
+const AREA_UNIT_LABEL: Record<AreaUnit, string> = {
+  SQ_FT:   'sqft',
+  SQ_YARD: 'sq yd',
+  MARLA:   'Marla',
+  KANAL:   'Kanal',
+};
+
+function formatArea(size: string, unit: AreaUnit): string {
+  const n = parseFloat(size);
+  if (isNaN(n)) return '';
+  const rounded = Number.isInteger(n) ? n.toString() : n.toFixed(1);
+  return `${rounded} ${AREA_UNIT_LABEL[unit]}`;
+}
 
 // ── Price formatting ────────────────────────────────────────────────────────
 function formatPKR(price: string): string {
@@ -43,7 +58,9 @@ interface PropertyCardProps {
 export default function PropertyCard({ property, imageUrl }: PropertyCardProps) {
   const badge    = STATUS[property.availability_status] ?? STATUS.AVAILABLE;
   const gradient = GRADIENTS[property.property_category] ?? GRADIENTS.HOUSE;
-  const areaNum  = property.area_sqft ? parseFloat(property.area_sqft) : null;
+  const areaLabel = property.area_size
+    ? formatArea(property.area_size, property.area_unit)
+    : null;
 
   return (
     <Link
@@ -172,7 +189,7 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
         </h3>
 
         {/* Specs row */}
-        {(property.bedrooms != null || property.bathrooms != null || areaNum != null) && (
+        {(property.bedrooms != null || property.bathrooms != null || areaLabel) && (
           <div className="flex items-center gap-4 flex-wrap">
             {property.bedrooms != null && (
               <SpecItem icon={<BedIcon />} value={`${property.bedrooms} Bed`} />
@@ -180,8 +197,8 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
             {property.bathrooms != null && (
               <SpecItem icon={<BathIcon />} value={`${property.bathrooms} Bath`} />
             )}
-            {areaNum != null && (
-              <SpecItem icon={<AreaIcon />} value={`${areaNum.toLocaleString()} sqft`} />
+            {areaLabel && (
+              <SpecItem icon={<AreaIcon />} value={areaLabel} />
             )}
           </div>
         )}

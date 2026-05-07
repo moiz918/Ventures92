@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "mcp__stitch__list_projects",
+      "mcp__stitch__list_design_systems",
+      "mcp__stitch__list_screens",
+      "Bash(docker-compose exec *)",
+      "mcp__stitch__get_screen",
+      "WebFetch(domain:contribution.usercontent.google.com)",
+      "Bash(git commit -m 'feat\\(frontend\\): add Homepage, HeroSection, and PropertyCard components *)",
+      "Bash(git push *)",
+      "Bash(not exist *)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"C:\\\\Users\\\\moiz6\\\\OneDrive\\\\Documents\\\\Ventures92\\\\frontend\\\\app\\\\properties\")",
+      "Bash(Out-Null)",
+      "PowerShell(New-Item *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 import { api } from './api';
 
 export type LeadPropertyType = 'RESIDENTIAL' | 'COMMERCIAL';
-export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CLOSED';
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'IN_PROGRESS' | 'QUALIFIED' | 'LOST' | 'CLOSED';
 
 // ── Request payloads ──────────────────────────────────────────────────────────
 export interface LeadCreatePayload {
