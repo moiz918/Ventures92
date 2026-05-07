@@ -26,7 +26,10 @@ export default async function HomePage() {
       <HeroSection />
 
       {/* ── Corporate Partners ──────────────────────────────────────────── */}
-      <CorporatePartners />
+      {/* `id` enables /#partners footer anchor scroll */}
+      <div id="partners" style={{ scrollMarginTop: '64px' }}>
+        <CorporatePartners />
+      </div>
 
       {/* ── Featured Properties ─────────────────────────────────────────── */}
       <section style={{ backgroundColor: '#16130d', paddingBlock: '120px' }}>

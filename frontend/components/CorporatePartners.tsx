@@ -1,12 +1,34 @@
 import { getPartners, type Partner } from '@/services/partnerService';
+import { SafeImage } from '@/components/SafeImage';
+
+// ── Premium text fallback (used when logo missing or fails to load) ──────────
+function PartnerTextMark({ name }: { name: string }) {
+  return (
+    <span
+      style={{
+        fontFamily: 'var(--font-manrope)',
+        fontSize: '13px',
+        fontWeight: 700,
+        letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: '#99907e',
+        textAlign: 'center',
+        whiteSpace: 'nowrap',
+        // subtle gold underline accent on hover via parent
+      }}
+    >
+      {name}
+    </span>
+  );
+}
 
 // ── Single partner tile ───────────────────────────────────────────────────────
 function PartnerTile({ partner }: { partner: Partner }) {
-  const inner = partner.logo_url ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+  const inner = (
+    <SafeImage
       src={partner.logo_url}
       alt={partner.name}
+      fallback={<PartnerTextMark name={partner.name} />}
       style={{
         maxHeight: '40px',
         maxWidth: '140px',
@@ -15,19 +37,6 @@ function PartnerTile({ partner }: { partner: Partner }) {
         opacity: 0.45,
       }}
     />
-  ) : (
-    <span
-      style={{
-        fontFamily: 'var(--font-manrope)',
-        fontSize: '13px',
-        fontWeight: 700,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: '#99907e',
-      }}
-    >
-      {partner.name}
-    </span>
   );
 
   return partner.website_url ? (

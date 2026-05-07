@@ -495,12 +495,18 @@ frontend/
     error.tsx                 # "use client" — global error boundary; Reset + Back to Home; shows error.digest
     loading.tsx               # Global loading spinner — gold CSS spin animation, branded
     not-found.tsx             # Global 404 — "404" hero numeral + Back to Home + Browse Properties
+    about/
+      page.tsx                # "Our Vision" — Server Component, hero + stat strip + 3-pillar grid + CTA band
     admin/
       layout.tsx              # Admin route group layout — sticky sidebar + header, no URL change
       dashboard/
         page.tsx              # Lead Management Pipeline — embeds LeadKanban
       properties/
         page.tsx              # "use client" — property data table, Add New + Delete with confirm
+      projects/
+        page.tsx              # Async RSC — read-only project roster with status badges and View links
+      settings/
+        page.tsx              # Async RSC — read-only site settings table (key/value/description/updated)
     projects/
       page.tsx                # Async RSC — "Exclusive Developments" hero, stat strip, 3-col ProjectCard grid
       [slug]/
@@ -521,8 +527,9 @@ frontend/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
     CorporatePartners.tsx     # Async Server Component — CSS marquee carousel, getPartners(), logo/name fallback
     LeadCaptureForm.tsx       # "use client" — full lead form, focus states, success/error handling
-    PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder
-    PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav
+    PropertyCard.tsx          # Luxury card — status badge, PKR price overlay, specs row, gradient placeholder; uses SafeImage
+    PropertyGallery.tsx       # "use client" — hero image, thumbnail strip, prev/next nav; uses SafeImage with HeroFallback + ThumbnailFallback
+    SafeImage.tsx             # "use client" — <img> wrapper with onError fallback; used by CorporatePartners, PropertyCard, PropertyGallery
     SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/location/price); locations prop from server
     admin/
       LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
@@ -571,10 +578,11 @@ frontend/
 - Async Server Component; calls `getPartners()` — returns `null` render if no partners.
 - **Marquee**: `overflow: hidden` wrapper + duplicated partner array (renders list twice) + `animation: marquee 40s linear infinite` for seamless CSS-only loop.
 - `@keyframes marquee`: `translateX(0) → translateX(-50%)` (half the doubled width = one full cycle).
-- **Logo display**: `<img>` with `filter: brightness(0) invert(1); opacity: 0.45` for monochrome treatment; falls back to partner name text if no `logo_url`.
+- **Logo display**: uses `<SafeImage>` (client component) with `filter: brightness(0) invert(1); opacity: 0.45` for monochrome treatment. When `logo_url` is missing **or fails to load (broken URL, 404, CORS, decode error)**, renders premium `<PartnerTextMark>` fallback — uppercase Manrope label in muted gold. No empty grey boxes.
 - Partner tiles link to `website_url` when present (`target="_blank" rel="noopener noreferrer"`).
 - Left/right fade edges via `linear-gradient` pseudo-overlays (`zIndex: 1`).
-- Uses regular `<img>` (not `next/image`) — partner logo domains are arbitrary, avoiding domain config churn.
+- Uses regular `<img>` via SafeImage (not `next/image`) — partner logo domains are arbitrary, avoiding domain config churn.
+- **Anchor target**: home page wraps `<CorporatePartners />` with `<div id="partners">` so the footer `/#partners` link smooth-scrolls to it (`scrollMarginTop: 64px` offsets the fixed navbar).
 
 ### Property Detail — `app/properties/[slug]/page.tsx`
 
@@ -754,6 +762,44 @@ The `admin/` directory wraps all admin pages under the `/admin/*` URL namespace 
 - Overlays: 48px architectural grid, diagonal gold tint, centred SVG building silhouette (watermark), gold left accent bar.
 - **Status badge**: top-left; PLANNED=muted `#99907e`, UNDER_CONSTRUCTION=amber `#E8A020`, COMPLETED=green `#1D9E75`.
 - **Card body**: location eyebrow (uppercase, `#4d4637`) → title (Epilogue 700 17px uppercase) → description snippet (2-line clamp) → footer divider + "View Details →" gold link.
+
+### About — `app/about/page.tsx`
+
+- Server Component (no `"use client"`) — purely static; metadata exported.
+- **Hero**: `Our / Vision` headline (Epilogue 800, second word gold), 72px architectural grid + radial gold glow + gold left-edge accent.
+- **Stat strip**: 4 cells (`10+` / `6+` / `100+` / `24h`) — Space Grotesk gold values, mirrors the projects page strip.
+- **Narrative section**: 2-column eyebrow-then-body layout (`280px 1fr`); H2 + two paragraphs of brand story.
+- **Pillars grid**: 3 cards in `auto-fit minmax(280px, 1fr)` hairline-grid — numbered eyebrow (01/02/03), title, body.
+- **Closing CTA**: centered "Begin a Conversation" eyebrow + headline + Begin Enquiry (gold fill → `/contact`) + Browse Portfolio (gold outline → `/properties`).
+- `<SectionEyebrow>` shared sub-component — gold caps label flanked by hairline rules; `center` variant for the closing block.
+
+### Image Hardening — `components/SafeImage.tsx`
+
+- `"use client"` — needs `useState` + `onError` to track decode failures.
+- Props: `{ src: string | null | undefined; alt: string; fallback: ReactNode; ...imgAttrs }`.
+- Renders `<img>` initially; on `onError` (network failure, broken decode, CORS), swaps to `fallback` ReactNode.
+- Also renders fallback when `src` is empty/null/undefined (so callers don't need to guard).
+- **Used by**:
+  - `CorporatePartners` → fallback = `<PartnerTextMark>` (uppercase Manrope label).
+  - `PropertyGallery` → hero fallback = `<HeroFallback>` (per-category gradient + camera SVG + "Image Unavailable" caption); thumbnail fallback = `<ThumbnailFallback>` (small dark gradient + tiny camera glyph).
+  - `PropertyCard` → fallback = the same `<BuildingIcon>` watermark used when no `imageUrl` is provided in the first place.
+- Result: no broken-image icons anywhere in the app, even when the backend serves dead URLs.
+
+### Admin Projects — `app/admin/projects/page.tsx`
+
+- Async Server Component; calls `getProjects().catch(() => null)` — never throws to the client.
+- 4-column data table (Project / Status / Listed / Actions) using the same hairline-row styling as `/admin/properties`.
+- Status badges follow the same colour map as the public projects portal (PLANNING=muted, UNDER_CONSTRUCTION=amber, COMPLETED=green).
+- "View" button on each row opens the public `/projects/{slug}` listing in a new tab.
+- Read-only — milestone editing happens via `POST /api/v1/projects/{id}/milestones` (admin UI is roadmap).
+- Empty / error states match the design system (bordered card, muted Manrope copy).
+
+### Admin Settings — `app/admin/settings/page.tsx`
+
+- Async Server Component; reads `GET /api/v1/settings/` directly via `api.get<SettingResponse[]>()`.
+- 4-column read-only table: Key (Space Grotesk gold) / Value / Description / Updated.
+- Footer note documents that mutation is performed via `PUT /api/v1/settings/{key}` (no in-app editor yet).
+- Empty / error states match the rest of admin.
 
 #### `components/MilestoneTimeline.tsx`
 

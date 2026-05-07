@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import type { PropertyMedia, PropertyCategory } from '@/services/propertyService';
+import { SafeImage } from '@/components/SafeImage';
 
 // ── Per-category gradient (mirrors PropertyCard) ────────────────────────────
 const GRADIENTS: Record<string, string> = {
@@ -82,11 +83,11 @@ export default function PropertyGallery({ media, title, category }: Props) {
           backgroundColor: '#2d2a23',
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <SafeImage
           key={active.id}
           src={active.media_url}
           alt={`${title} — photo ${activeIdx + 1} of ${total}`}
+          fallback={<HeroFallback category={category} />}
           style={{
             width: '100%',
             height: '100%',
@@ -186,16 +187,75 @@ export default function PropertyGallery({ media, title, category }: Props) {
                 transition: 'opacity 0.15s, border-color 0.15s',
               }}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <SafeImage
                 src={m.media_url}
                 alt=""
+                fallback={<ThumbnailFallback />}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
               />
             </button>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Image fallback (broken / missing media URL) ──────────────────────────────
+function HeroFallback({ category }: { category: PropertyCategory }) {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        background: GRADIENTS[category] ?? GRADIENTS.HOUSE,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+      }}
+    >
+      <svg width="56" height="56" viewBox="0 0 64 64" fill="none" style={{ opacity: 0.18 }} aria-hidden="true">
+        <rect x="4" y="4" width="56" height="56" stroke="#C9A84C" strokeWidth="1.5" />
+        <circle cx="20" cy="20" r="6" stroke="#C9A84C" strokeWidth="1.5" />
+        <path d="M4 44l18-18 12 12 8-8 18 18" stroke="#C9A84C" strokeWidth="1.5" />
+      </svg>
+      <span
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '20px',
+          fontFamily: 'var(--font-manrope)',
+          fontSize: '10px',
+          fontWeight: 700,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
+          color: '#4d4637',
+        }}
+      >
+        Image Unavailable
+      </span>
+    </div>
+  );
+}
+
+function ThumbnailFallback() {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        background: 'linear-gradient(145deg, #2d2a23 0%, #1e1b15 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <svg width="20" height="20" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.3 }} aria-hidden="true">
+        <rect x="1" y="2" width="14" height="11" stroke="#C9A84C" strokeWidth="1" />
+        <circle cx="5" cy="6" r="1.25" stroke="#C9A84C" strokeWidth="1" />
+        <path d="M1 11l4-4 4 4 2-2 4 4" stroke="#C9A84C" strokeWidth="1" />
+      </svg>
     </div>
   );
 }

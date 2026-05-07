@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Property, AreaUnit } from '@/services/propertyService';
+import { SafeImage } from '@/components/SafeImage';
 
 // ── Area formatting ─────────────────────────────────────────────────────────
 const AREA_UNIT_LABEL: Record<AreaUnit, string> = {
@@ -79,11 +80,15 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
         style={{ aspectRatio: '16 / 9', background: gradient }}
       >
         {imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <SafeImage
             src={imageUrl}
             alt={property.title}
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            fallback={
+              <div className="absolute inset-0 flex items-center justify-center">
+                <BuildingIcon category={property.property_category} />
+              </div>
+            }
           />
         )}
 

@@ -78,6 +78,8 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: "kern" 1, "liga" 1;
+    /* Smooth scroll for in-page anchors (e.g. /#partners footer link) */
+    scroll-behavior: smooth;
   }
 
   body {

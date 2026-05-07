@@ -133,7 +133,7 @@ const FOOTER_COLS = [
     heading: "Company",
     links: [
       { href: "/about",      label: "About Us"           },
-      { href: "/partners",   label: "Corporate Partners" },
+      { href: "/#partners",  label: "Corporate Partners" },
       { href: "/contact",    label: "Contact"            },
       { href: "/admin/dashboard", label: "Admin Portal"  },
     ],
