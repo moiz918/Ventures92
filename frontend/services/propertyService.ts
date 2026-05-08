@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, ApiError } from './api';
 
 // ── Enums ──────────────────────────────────────────────────────────────────
 export type PropertyType = 'RESIDENTIAL' | 'COMMERCIAL';
@@ -43,6 +43,11 @@ export interface Property {
   project_id?: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Present when the backend eager-loads media (list endpoint + detail endpoint).
+   * May be absent on older cached responses — always treat as optional.
+   */
+  media?: PropertyMedia[];
 }
 
 export interface PropertyDetail extends Property {
@@ -120,4 +125,70 @@ export async function createProperty(data: PropertyCreatePayload): Promise<Prope
 
 export async function deleteProperty(id: string): Promise<void> {
   await api.delete<unknown>(`/properties/${id}`);
+}
+
+// ── Update (partial) ───────────────────────────────────────────────────────
+
+export interface PropertyUpdatePayload {
+  title?: string;
+  description?: string;
+  property_type?: PropertyType;
+  property_category?: PropertyCategory;
+  /** Decimal string — e.g. "7500000" */
+  price?: string;
+  /** Decimal string e.g. "2400" */
+  area_size?: string;
+  area_unit?: AreaUnit;
+  bedrooms?: number;
+  bathrooms?: number;
+  address_details?: string;
+  availability_status?: AvailabilityStatus;
+  is_featured?: boolean;
+  /** UUIDs from GET /amenities/ — replaces existing M2M set */
+  amenity_ids?: string[];
+}
+
+export async function updateProperty(id: string, data: PropertyUpdatePayload): Promise<Property> {
+  return api.put<Property>(`/properties/${id}`, data);
+}
+
+// ── Media upload ───────────────────────────────────────────────────────────
+
+export interface MediaUploadResponse {
+  url: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+/**
+ * Uploads a single image file to POST /api/v1/media/upload using multipart
+ * form-data. The Content-Type header is intentionally omitted so the browser
+ * sets the correct boundary automatically. Always client-side only.
+ */
+export async function uploadPropertyMedia(file: File): Promise<MediaUploadResponse> {
+  const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${base}/media/upload`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+    // No Content-Type header — browser fills in the multipart boundary automatically
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = String(body.detail);
+    } catch {
+      // ignore json parse errors on error responses
+    }
+    throw new ApiError(res.status, res.statusText, detail);
+  }
+
+  return res.json() as Promise<MediaUploadResponse>;
 }

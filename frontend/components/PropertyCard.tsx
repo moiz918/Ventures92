@@ -48,10 +48,33 @@ const GRADIENTS: Record<string, string> = {
   SHOP:      'linear-gradient(145deg, #2d2a23 0%, #16130d 100%)',
 };
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+/**
+ * Extract the best image URL from the property's media array.
+ *
+ * Priority:
+ *   1. The item explicitly marked is_primary = true.
+ *   2. The first item in the array (sort_order = 0).
+ *   3. undefined — triggers SafeImage's built-in fallback.
+ *
+ * We never pass a broken URL directly; SafeImage handles runtime network
+ * failures via its onError handler.
+ */
+function resolvePrimaryImageUrl(property: Property): string | undefined {
+  const media = property.media;
+  if (!media || media.length === 0) return undefined;
+  const primary = media.find((m) => m.is_primary);
+  return primary ? primary.media_url : media[0].media_url;
+}
+
 // ── Props ───────────────────────────────────────────────────────────────────
 interface PropertyCardProps {
   property: Property;
-  /** Optional primary image URL — when absent, an architectural gradient is shown */
+  /**
+   * @deprecated Pass media via `property.media` instead.
+   * Kept for backward-compat with call sites that pre-compute the URL.
+   * When both are present, property.media takes precedence.
+   */
   imageUrl?: string;
 }
 
@@ -62,6 +85,9 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
   const areaLabel = property.area_size
     ? formatArea(property.area_size, property.area_unit)
     : null;
+
+  // Resolve the display image: prefer media array, fall back to explicit prop.
+  const resolvedImageUrl = resolvePrimaryImageUrl(property) ?? imageUrl;
 
   return (
     <Link
@@ -79,17 +105,24 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
         className="relative overflow-hidden"
         style={{ aspectRatio: '16 / 9', background: gradient }}
       >
-        {imageUrl && (
+        {resolvedImageUrl ? (
           <SafeImage
-            src={imageUrl}
+            src={resolvedImageUrl}
             alt={property.title}
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
             fallback={
+              /* SafeImage fires this when the URL fails at runtime (404, CORS,
+                 decode error) — keeps the card clean with no broken-image icon */
               <div className="absolute inset-0 flex items-center justify-center">
                 <BuildingIcon category={property.property_category} />
               </div>
             }
           />
+        ) : (
+          /* No media in DB — render branded placeholder immediately */
+          <div className="absolute inset-0 flex items-center justify-center">
+            <BuildingIcon category={property.property_category} />
+          </div>
         )}
 
         {/* Hover overlay */}
@@ -97,13 +130,6 @@ export default function PropertyCard({ property, imageUrl }: PropertyCardProps) 
           className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
           style={{ backgroundColor: 'rgba(0,0,0,0.15)' }}
         />
-
-        {/* Category watermark (placeholder only) */}
-        {!imageUrl && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <BuildingIcon category={property.property_category} />
-          </div>
-        )}
 
         {/* Status badge — top left */}
         <span

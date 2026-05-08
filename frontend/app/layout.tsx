@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Epilogue, Manrope, Space_Grotesk } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+import { getCurrentUser } from "@/lib/auth";
+import AuthNav from "@/components/AuthNav";
 
 // ── Google Fonts ────────────────────────────────────────────────────────────
 const epilogue = Epilogue({
@@ -43,7 +45,11 @@ const NAV_LINKS = [
   { href: "/contact",    label: "Contact"    },
 ] as const;
 
-function Navbar() {
+async function Navbar() {
+  // Fetch current user server-side — returns null when no valid session exists.
+  // Errors other than 401/403 propagate (caught by the nearest error boundary).
+  const user = await getCurrentUser().catch(() => null);
+
   return (
     <header
       className="fixed top-0 left-0 right-0 z-50"
@@ -92,19 +98,24 @@ function Navbar() {
           ))}
         </ul>
 
-        {/* CTA */}
-        <Link
-          href="/contact"
-          className="hidden md:inline-block bg-gold text-charcoal font-bold uppercase hover:bg-gold-hover transition-colors duration-200"
-          style={{
-            fontFamily: "var(--font-manrope)",
-            fontSize: "11px",
-            letterSpacing: "0.12em",
-            padding: "12px 24px",
-          }}
-        >
-          Book Consultation
-        </Link>
+        {/* CTAs — auth-aware */}
+        <div className="hidden md:flex items-center gap-3">
+          {/* AuthNav is a Client Component that receives the server-resolved user
+              and handles the logout interaction without breaking the RSC tree. */}
+          <AuthNav user={user} />
+          <Link
+            href="/contact"
+            className="bg-gold text-charcoal font-bold uppercase hover:bg-gold-hover transition-colors duration-200"
+            style={{
+              fontFamily: "var(--font-manrope)",
+              fontSize: "11px",
+              letterSpacing: "0.12em",
+              padding: "12px 24px",
+            }}
+          >
+            Book Consultation
+          </Link>
+        </div>
       </nav>
     </header>
   );

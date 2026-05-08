@@ -83,3 +83,24 @@ export const ADMIN_ROLES: ReadonlySet<UserRole> = new Set(['SUPER_ADMIN', 'AGENT
 export function isAdminRole(role: UserRole | null | undefined): boolean {
   return !!role && ADMIN_ROLES.has(role);
 }
+
+// ── Signup ───────────────────────────────────────────────────────────────────
+export type PublicSignupRole = 'INVESTOR' | 'BUYER_TENANT';
+
+export interface SignupPayload {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  phone_number?: string;
+  role: PublicSignupRole;
+}
+
+export interface SignupResponse {
+  user: CurrentUser;
+  expires_in: number;
+}
+
+export function signup(payload: SignupPayload) {
+  return api.post<SignupResponse>('/auth/signup', payload);
+}

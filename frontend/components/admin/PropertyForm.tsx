@@ -1,15 +1,19 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   createProperty,
+  updateProperty,
   getAmenities,
+  uploadPropertyMedia,
   type Amenity,
   type Property,
   type PropertyType,
   type PropertyCategory,
   type AvailabilityStatus,
   type AreaUnit,
+  type PropertyCreatePayload,
+  type PropertyUpdatePayload,
 } from '@/services/propertyService';
 import { ApiError } from '@/services/api';
 
@@ -17,6 +21,8 @@ import { ApiError } from '@/services/api';
 interface Props {
   onClose: () => void;
   onSuccess: (property: Property) => void;
+  /** When provided the form opens in edit mode and pre-fills all fields. */
+  property?: Property;
 }
 
 // ── Form state ────────────────────────────────────────────────────────────────
@@ -34,28 +40,40 @@ interface FormState {
   is_featured: boolean;
 }
 
-const INITIAL: FormState = {
-  title: '',
-  description: '',
-  price: '',
-  area_size: '',
-  area_unit: 'SQ_FT',
-  property_type: 'RESIDENTIAL',
-  property_category: 'APARTMENT',
-  availability_status: 'AVAILABLE',
-  bedrooms: '',
-  bathrooms: '',
-  is_featured: false,
-};
+function initialFormState(p?: Property): FormState {
+  return {
+    title:               p?.title                ?? '',
+    description:         p?.description          ?? '',
+    price:               p?.price                ?? '',
+    area_size:           p?.area_size             ?? '',
+    area_unit:           p?.area_unit             ?? 'SQ_FT',
+    property_type:       p?.property_type         ?? 'RESIDENTIAL',
+    property_category:   p?.property_category     ?? 'APARTMENT',
+    availability_status: p?.availability_status   ?? 'AVAILABLE',
+    bedrooms:            p?.bedrooms != null ? String(p.bedrooms) : '',
+    bathrooms:           p?.bathrooms != null ? String(p.bathrooms) : '',
+    is_featured:         p?.is_featured           ?? false,
+  };
+}
 
 const AREA_UNIT_LABELS: Record<AreaUnit, string> = {
-  SQ_FT:    'Sq. Ft',
-  SQ_YARD:  'Sq. Yard',
-  MARLA:    'Marla',
-  KANAL:    'Kanal',
+  SQ_FT:   'Sq. Ft',
+  SQ_YARD: 'Sq. Yard',
+  MARLA:   'Marla',
+  KANAL:   'Kanal',
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Pending upload entry ───────────────────────────────────────────────────────
+interface PendingImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: 'pending' | 'uploading' | 'done' | 'error';
+  uploadedUrl?: string;
+  errorMsg?: string;
+}
+
+// ── Style helpers ─────────────────────────────────────────────────────────────
 const labelStyle: React.CSSProperties = {
   fontFamily: 'var(--font-manrope)',
   fontSize: '10px',
@@ -104,20 +122,34 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function PropertyForm({ onClose, onSuccess }: Props) {
-  const [form, setForm] = useState<FormState>(INITIAL);
+export default function PropertyForm({ onClose, onSuccess, property }: Props) {
+  const isEditMode = Boolean(property);
+
+  const [form, setForm] = useState<FormState>(() => initialFormState(property));
   const [focused, setFocused] = useState('');
   const [amenities, setAmenities] = useState<Amenity[]>([]);
   const [selectedAmenityIds, setSelectedAmenityIds] = useState<Set<string>>(new Set());
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load amenities from the API on mount
+  // Load amenities on mount
   useEffect(() => {
     getAmenities().then(setAmenities).catch(() => {
-      // Non-fatal — form still works, amenity section just stays empty
+      // Non-fatal — form still works without amenities
     });
   }, []);
+
+  // Pre-select amenities when editing (PropertyDetail has amenities array)
+  useEffect(() => {
+    if (property && 'amenities' in property) {
+      const detail = property as Property & { amenities?: Amenity[] };
+      if (detail.amenities?.length) {
+        setSelectedAmenityIds(new Set(detail.amenities.map((a) => a.id)));
+      }
+    }
+  }, [property]);
 
   const set = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -134,33 +166,124 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
     });
   }, []);
 
+  // ── Image selection ──────────────────────────────────────────────────────
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    const newEntries: PendingImage[] = files.map((file) => ({
+      id: `${Date.now()}-${Math.random()}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      status: 'pending',
+    }));
+
+    setPendingImages((prev) => [...prev, ...newEntries]);
+    // Reset so the same file can be re-selected after removal
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const removeImage = useCallback((id: string) => {
+    setPendingImages((prev) => {
+      const entry = prev.find((i) => i.id === id);
+      if (entry) URL.revokeObjectURL(entry.previewUrl);
+      return prev.filter((i) => i.id !== id);
+    });
+  }, []);
+
+  // Upload all pending images sequentially; return collected URLs
+  const uploadAllImages = useCallback(async (): Promise<string[]> => {
+    const urls: string[] = [];
+
+    for (const entry of pendingImages) {
+      if (entry.status === 'done' && entry.uploadedUrl) {
+        urls.push(entry.uploadedUrl);
+        continue;
+      }
+      if (entry.status !== 'pending') continue;
+
+      setPendingImages((prev) =>
+        prev.map((i) => (i.id === entry.id ? { ...i, status: 'uploading' } : i)),
+      );
+
+      try {
+        const result = await uploadPropertyMedia(entry.file);
+        urls.push(result.url);
+        setPendingImages((prev) =>
+          prev.map((i) =>
+            i.id === entry.id ? { ...i, status: 'done', uploadedUrl: result.url } : i,
+          ),
+        );
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Upload failed';
+        setPendingImages((prev) =>
+          prev.map((i) =>
+            i.id === entry.id ? { ...i, status: 'error', errorMsg: msg } : i,
+          ),
+        );
+        throw new Error(`Image upload failed: ${msg}`);
+      }
+    }
+
+    return urls;
+  }, [pendingImages]);
+
+  // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
 
     try {
-      const payload = {
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        property_type: form.property_type,
-        property_category: form.property_category,
-        price: form.price.trim(),
-        area_size: form.area_size.trim(),
-        area_unit: form.area_unit,
-        bedrooms: form.bedrooms ? parseInt(form.bedrooms, 10) : undefined,
-        bathrooms: form.bathrooms ? parseInt(form.bathrooms, 10) : undefined,
+      // Step 1: upload any pending images first, collect their URLs
+      const uploadedUrls = await uploadAllImages();
+
+      const sharedFields = {
+        description:         form.description.trim() || undefined,
+        property_type:       form.property_type,
+        property_category:   form.property_category,
+        price:               form.price.trim(),
+        area_size:           form.area_size.trim() || undefined,
+        area_unit:           form.area_unit,
+        bedrooms:            form.bedrooms ? parseInt(form.bedrooms, 10) : undefined,
+        bathrooms:           form.bathrooms ? parseInt(form.bathrooms, 10) : undefined,
         availability_status: form.availability_status,
-        is_featured: form.is_featured,
-        amenity_ids: selectedAmenityIds.size > 0 ? Array.from(selectedAmenityIds) : undefined,
+        is_featured:         form.is_featured,
+        amenity_ids:         selectedAmenityIds.size > 0 ? Array.from(selectedAmenityIds) : undefined,
+        // Pass uploaded media URLs so the backend can persist PropertyMedia rows
+        ...(uploadedUrls.length > 0 ? { media_urls: uploadedUrls } : {}),
       };
 
-      const created = await createProperty(payload);
-      onSuccess(created);
+      let saved: Property;
+      if (isEditMode && property) {
+        const payload: PropertyUpdatePayload = { title: form.title.trim(), ...sharedFields };
+        saved = await updateProperty(property.id, payload);
+      } else {
+        const payload: PropertyCreatePayload = {
+          title:               form.title.trim(),
+          property_type:       form.property_type,
+          property_category:   form.property_category,
+          price:               form.price.trim(),
+          area_size:           form.area_size.trim(),
+          area_unit:           form.area_unit,
+          availability_status: form.availability_status,
+          is_featured:         form.is_featured,
+          ...sharedFields,
+        };
+        saved = await createProperty(payload);
+      }
+
+      onSuccess(saved);
       onClose();
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.status === 422 ? 'Please check your details — some fields are invalid.' : err.message);
+        setError(
+          err.status === 422
+            ? 'Please check your details — some fields are invalid.'
+            : err.message,
+        );
+      } else if (err instanceof Error) {
+        setError(err.message);
       } else {
         setError('An unexpected error occurred. Please try again.');
       }
@@ -169,8 +292,8 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    /* Overlay */
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', justifyContent: 'flex-end' }}>
       {/* Backdrop */}
       <div
@@ -178,12 +301,12 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
         style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.65)' }}
       />
 
-      {/* Panel */}
+      {/* Panel — responsive: full-width on small screens, max 600px on desktop */}
       <div
         style={{
           position: 'relative',
-          width: '600px',
-          maxWidth: '100vw',
+          width: '100%',
+          maxWidth: '600px',
           height: '100vh',
           backgroundColor: '#16130d',
           borderLeft: '1px solid #4d4637',
@@ -210,7 +333,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
               Admin
             </p>
             <p style={{ fontFamily: 'var(--font-epilogue)', fontSize: '15px', fontWeight: 700, color: '#e9e1d7', margin: 0 }}>
-              Add New Property
+              {isEditMode ? 'Edit Property' : 'Add New Property'}
             </p>
           </div>
           <button
@@ -243,7 +366,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
             <SectionHeading>Basic Info</SectionHeading>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-              {/* Title */}
               <div>
                 <label style={labelStyle}>Property Title *</label>
                 <input
@@ -257,7 +379,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label style={labelStyle}>Description</label>
                 <textarea
@@ -271,7 +392,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 />
               </div>
 
-              {/* Price + Area Size */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Price (PKR) *</label>
@@ -289,9 +409,8 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Area Size *</label>
+                  <label style={labelStyle}>Area Size</label>
                   <input
-                    required
                     type="number"
                     min="0"
                     step="0.01"
@@ -305,13 +424,11 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 </div>
               </div>
 
-              {/* Area Unit + Bedrooms + Bathrooms */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={labelStyle}>Area Unit *</label>
+                  <label style={labelStyle}>Area Unit</label>
                   <div style={{ position: 'relative' }}>
                     <select
-                      required
                       value={form.area_unit}
                       onChange={(e) => set('area_unit', e.target.value as AreaUnit)}
                       onFocus={() => setFocused('area_unit')}
@@ -360,7 +477,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
             <SectionHeading>Classification</SectionHeading>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-              {/* Type + Category */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={labelStyle}>Property Type *</label>
@@ -401,7 +517,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 </div>
               </div>
 
-              {/* Availability status */}
               <div>
                 <label style={labelStyle}>Availability Status *</label>
                 <div style={{ position: 'relative' }}>
@@ -423,11 +538,174 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
             </div>
           </section>
 
-          {/* ── Section 3: Features & Amenities ───────────────── */}
+          {/* ── Section 3: Property Images ─────────────────────── */}
+          <section>
+            <SectionHeading>Property Images</SectionHeading>
+
+            {/* Hidden native file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+              aria-label="Upload property images"
+            />
+
+            {/* Upload trigger */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={submitting}
+              style={{
+                width: '100%',
+                border: '1px dashed #4d4637',
+                backgroundColor: 'transparent',
+                color: '#99907e',
+                padding: '20px',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: pendingImages.length > 0 ? '12px' : 0,
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" stroke="currentColor" strokeWidth="1.25" />
+                <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <span style={{ fontFamily: 'var(--font-manrope)', fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Choose Images
+              </span>
+              <span style={{ fontFamily: 'var(--font-manrope)', fontSize: '11px', color: '#4d4637' }}>
+                JPEG · PNG · WebP — multiple allowed
+              </span>
+            </button>
+
+            {/* Image preview grid */}
+            {pendingImages.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {pendingImages.map((img) => (
+                  <div
+                    key={img.id}
+                    style={{
+                      position: 'relative',
+                      aspectRatio: '16/9',
+                      backgroundColor: '#100e08',
+                      border: `1px solid ${
+                        img.status === 'done'
+                          ? '#1D9E75'
+                          : img.status === 'error'
+                          ? '#8B2E2E'
+                          : '#4d4637'
+                      }`,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.previewUrl}
+                      alt={img.file.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+
+                    {/* Uploading spinner overlay */}
+                    {img.status === 'uploading' && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(16,14,8,0.7)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ animation: 'spin 0.8s linear infinite', color: '#C9A84C' }} aria-hidden="true">
+                          <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="28 20" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                    )}
+
+                    {/* Done badge */}
+                    {img.status === 'done' && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '4px',
+                          left: '4px',
+                          backgroundColor: '#1D9E75',
+                          width: '16px',
+                          height: '16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <svg width="8" height="6" viewBox="0 0 8 6" fill="none" aria-hidden="true">
+                          <path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+
+                    {/* Error overlay */}
+                    {img.status === 'error' && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          backgroundColor: 'rgba(139,46,46,0.75)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '6px',
+                        }}
+                      >
+                        <span style={{ fontFamily: 'var(--font-manrope)', fontSize: '9px', color: '#e9e1d7', textAlign: 'center', lineHeight: 1.4 }}>
+                          {img.errorMsg ?? 'Upload failed'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Remove button */}
+                    {img.status !== 'uploading' && (
+                      <button
+                        type="button"
+                        onClick={() => removeImage(img.id)}
+                        aria-label="Remove image"
+                        style={{
+                          position: 'absolute',
+                          top: '4px',
+                          right: '4px',
+                          width: '18px',
+                          height: '18px',
+                          backgroundColor: 'rgba(16,14,8,0.8)',
+                          border: '1px solid #4d4637',
+                          color: '#99907e',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden="true">
+                          <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ── Section 4: Features & Amenities ───────────────── */}
           <section>
             <SectionHeading>Features &amp; Amenities</SectionHeading>
 
-            {/* is_featured toggle */}
             <div style={{ marginBottom: '20px' }}>
               <ToggleRow
                 checked={form.is_featured}
@@ -437,7 +715,6 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
               />
             </div>
 
-            {/* Amenity grid — loaded from GET /amenities/ */}
             {amenities.length > 0 && (
               <div>
                 <p style={{ ...labelStyle, marginBottom: '12px' }}>Amenities</p>
@@ -512,7 +789,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 alignItems: 'flex-start',
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: '1px' }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginTop: '1px' }} aria-hidden="true">
                 <circle cx="8" cy="8" r="7" stroke="#99907e" strokeWidth="1.25" />
                 <path d="M8 5v4M8 11v.5" stroke="#99907e" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
@@ -555,7 +832,7 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
             disabled={submitting}
             onClick={handleSubmit as unknown as React.MouseEventHandler<HTMLButtonElement>}
             style={{
@@ -580,10 +857,10 @@ export default function PropertyForm({ onClose, onSuccess }: Props) {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ animation: 'spin 1s linear infinite' }}>
                   <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="12 22" />
                 </svg>
-                Publishing…
+                {isEditMode ? 'Saving…' : 'Publishing…'}
               </>
             ) : (
-              'Publish Property'
+              isEditMode ? 'Save Changes' : 'Publish Property'
             )}
           </button>
         </div>
@@ -601,7 +878,14 @@ function ChevronIcon() {
       viewBox="0 0 12 12"
       fill="none"
       aria-hidden="true"
-      style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#4d4637' }}
+      style={{
+        position: 'absolute',
+        right: '12px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        pointerEvents: 'none',
+        color: '#4d4637',
+      }}
     >
       <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -644,7 +928,6 @@ function ToggleRow({
           {description}
         </p>
       </div>
-      {/* Toggle pill */}
       <div
         style={{
           width: '36px',

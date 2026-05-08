@@ -15,6 +15,7 @@ Resulting base paths:
   /api/v1/settings/
   /api/v1/partners/
   /api/v1/locations/
+  /api/v1/media/
 """
 
 from fastapi import APIRouter
@@ -24,6 +25,7 @@ from app.api.v1.endpoints import (
     auth,
     leads,
     locations,
+    media,
     partners,
     projects,
     properties,
@@ -32,14 +34,14 @@ from app.api.v1.endpoints import (
 
 api_router = APIRouter()
 
-# ── Utility ──────────────────────────────────────────────────────────────────
+# -- Utility ------------------------------------------------------------------
 @api_router.get("/ping", tags=["Utility"])
 async def ping():
     """Simple liveness check for the v1 API."""
     return {"ping": "pong"}
 
 
-# ── Authentication ────────────────────────────────────────────────────────────
+# -- Authentication -----------------------------------------------------------
 api_router.include_router(
     auth.router,
     prefix="/auth",
@@ -47,7 +49,7 @@ api_router.include_router(
 )
 
 
-# ── Public Portal ─────────────────────────────────────────────────────────────
+# -- Public Portal ------------------------------------------------------------
 api_router.include_router(
     properties.router,
     prefix="/properties",
@@ -84,9 +86,16 @@ api_router.include_router(
     tags=["Amenities"],
 )
 
-# ── CRM / Admin ───────────────────────────────────────────────────────────────
+# -- CRM / Admin --------------------------------------------------------------
 api_router.include_router(
     leads.router,
     prefix="/leads",
     tags=["Leads (CRM)"],
+)
+
+# -- Media Upload -------------------------------------------------------------
+api_router.include_router(
+    media.router,
+    prefix="/media",
+    tags=["Media Upload"],
 )

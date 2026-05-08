@@ -1,13 +1,15 @@
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 
 # ---------------------------------------------------------------------------
-# Logging — auth events emit at WARNING so they show up in `docker compose logs`
+# Logging -- auth events emit at WARNING so they show in `docker compose logs`
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +43,19 @@ app.add_middleware(
 # Routers
 # ---------------------------------------------------------------------------
 app.include_router(api_router, prefix="/api/v1")
+
+# ---------------------------------------------------------------------------
+# Static files -- serve uploaded media from /static/uploads
+#
+# The upload directory is created here at startup so uvicorn --reload does
+# not crash on first boot before any upload has created it.
+# ---------------------------------------------------------------------------
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount(
+    "/static/uploads",
+    StaticFiles(directory=settings.UPLOAD_DIR),
+    name="uploads",
+)
 
 
 # ---------------------------------------------------------------------------

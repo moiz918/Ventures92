@@ -52,10 +52,13 @@ export default async function ProjectDetailPage({
 }) {
   const { slug } = await params;
   const project = await loadProject(slug);
-  const status = STATUS_CONFIG[project.status];
-  const heroGradient = HERO_GRADIENTS[project.status];
+  // Guard: STATUS_CONFIG may not have a key if the API returns an unexpected status
+  const status = STATUS_CONFIG[project.status] ?? STATUS_CONFIG['PLANNING'];
+  const heroGradient = HERO_GRADIENTS[project.status] ?? HERO_GRADIENTS['PLANNING'];
 
-  const completedCount = project.milestones.filter((m) => (m.completion_percentage ?? 0) >= 100).length;
+  // Guard: milestones may be missing if the API shape changes
+  const milestones = project.milestones ?? [];
+  const completedCount = milestones.filter((m) => (m.completion_percentage ?? 0) >= 100).length;
 
   return (
     <div style={{ backgroundColor: '#16130d', minHeight: '100vh' }}>
@@ -289,7 +292,7 @@ export default async function ProjectDetailPage({
             {/* Milestone timeline */}
             <section>
               <SectionHeading>Construction Timeline</SectionHeading>
-              <MilestoneTimeline milestones={project.milestones} />
+              <MilestoneTimeline milestones={milestones} />
             </section>
 
           </div>
@@ -356,9 +359,9 @@ export default async function ProjectDetailPage({
                 )}
 
                 {/* Milestones progress */}
-                {project.milestones.length > 0 && (
+                {milestones.length > 0 && (
                   <InfoRow label="Progress">
-                    {completedCount} of {project.milestones.length} phases complete
+                    {completedCount} of {milestones.length} phases complete
                   </InfoRow>
                 )}
 

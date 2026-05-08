@@ -49,6 +49,9 @@ class PropertyCreate(PropertyBase):
     address_details: Optional[str] = None
     # UUIDs resolved from GET /amenities/ — linked via M2M after row insert
     amenity_ids: Optional[List[uuid.UUID]] = None
+    # Public URLs returned by POST /media/upload — persisted as PropertyMedia rows.
+    # First URL gets is_primary=True; sort_order mirrors the array index.
+    media_urls: Optional[List[str]] = None
 
 
 class PropertyUpdate(BaseModel):
@@ -64,6 +67,13 @@ class PropertyUpdate(BaseModel):
     bathrooms: Optional[int] = None
     address_details: Optional[str] = None
     project_id: Optional[uuid.UUID] = None
+    # When provided, REPLACES the property's full amenity set.
+    # Pass an empty list [] to clear all amenities.
+    # Omit the field entirely to leave amenities unchanged.
+    amenity_ids: Optional[List[uuid.UUID]] = None
+    # When provided, REPLACES ALL existing PropertyMedia rows for this property
+    # (delete-then-insert strategy). Omit entirely to leave media unchanged.
+    media_urls: Optional[List[str]] = None
 
 
 class PropertyResponse(PropertyBase):

@@ -1,14 +1,14 @@
 """
-Properties endpoints — Module 1
-================================
+Properties endpoints
+====================
 Public:
-  GET  /properties/          — filtered search
-  GET  /properties/{slug}    — detail view with media + amenities (eager-loaded)
+  GET  /properties/          -- filtered search
+  GET  /properties/{slug}    -- detail view with media + amenities (eager-loaded)
 
 Admin:
-  POST   /properties/        — create
-  PUT    /properties/{id}    — update (partial)
-  DELETE /properties/{id}    — delete
+  POST   /properties/        -- create
+  PUT    /properties/{id}    -- update (partial, including amenity M2M + media replacement)
+  DELETE /properties/{id}    -- delete
 """
 
 import re
@@ -23,9 +23,9 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.api.deps import require_admin
 from app.db.session import get_db
-from app.models.enums import AvailabilityStatus, PropertyCategory, PropertyType
+from app.models.enums import AvailabilityStatus, MediaType, PropertyCategory, PropertyType
 from app.models.project import Project
-from app.models.property import Amenity, Property
+from app.models.property import Amenity, Property, PropertyMedia
 from app.models.user import User
 from app.schemas.property import (
     PropertyCreate,
@@ -37,9 +37,9 @@ from app.schemas.property import (
 
 def _slugify(text: str) -> str:
     """Convert an arbitrary title to a URL-safe slug."""
-    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
-    text = re.sub(r'[^\w\s-]', '', text.lower())
-    return re.sub(r'[-\s]+', '-', text).strip('-') or 'property'
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^\w\s-]", "", text.lower())
+    return re.sub(r"[-\s]+", "-", text).strip("-") or "property"
 
 
 def _unique_slug(base: str, db: Session) -> str:
@@ -51,11 +51,33 @@ def _unique_slug(base: str, db: Session) -> str:
         counter += 1
     return slug
 
+
+def _insert_media(property_id: uuid.UUID, urls: List[str], db: Session) -> None:
+    """
+    Insert PropertyMedia rows for the given URL list.
+
+    Rules:
+    - First URL (index 0) gets is_primary=True; all others False.
+    - sort_order mirrors the array index so ordering is preserved.
+    - Caller is responsible for removing pre-existing media before calling
+      this on an update (replace strategy).
+    """
+    for idx, url in enumerate(urls):
+        media = PropertyMedia(
+            property_id=property_id,
+            media_url=url,
+            media_type=MediaType.IMAGE,
+            is_primary=(idx == 0),
+            sort_order=idx,
+        )
+        db.add(media)
+
+
 router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# PUBLIC — Search / List
+# PUBLIC -- Search / List
 # ---------------------------------------------------------------------------
 
 @router.get("/", response_model=List[PropertyResponse], summary="List & search properties")
@@ -73,7 +95,7 @@ def list_properties(
 ) -> List[Property]:
     stmt = select(Property)
 
-    # location_id lives on Project, not Property — join only when needed
+    # location_id lives on Project, not Property -- join only when needed
     if location_id is not None:
         stmt = stmt.join(Property.project).where(Project.location_id == location_id)
 
@@ -90,18 +112,24 @@ def list_properties(
     if is_featured is not None:
         stmt = stmt.where(Property.is_featured == is_featured)
 
-    stmt = stmt.order_by(Property.created_at.desc()).offset(offset).limit(limit)
+    stmt = (
+        stmt
+        .options(selectinload(Property.media))
+        .order_by(Property.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
 
     return list(db.scalars(stmt).all())
 
 
 # ---------------------------------------------------------------------------
-# PUBLIC — Detail
+# PUBLIC -- Detail
 # ---------------------------------------------------------------------------
 
 @router.get("/{slug}", response_model=PropertyDetailResponse, summary="Get property detail by slug")
 def get_property(slug: str, db: Session = Depends(get_db)) -> Property:
-    # Use selectinload for collections (media, amenities) to avoid N+1 queries;
+    # selectinload for collections (media, amenities) avoids N+1 queries;
     # joinedload for the single-row project relationship.
     stmt = (
         select(Property)
@@ -114,12 +142,15 @@ def get_property(slug: str, db: Session = Depends(get_db)) -> Property:
     )
     prop = db.scalars(stmt).first()
     if prop is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Property '{slug}' not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Property '{slug}' not found",
+        )
     return prop
 
 
 # ---------------------------------------------------------------------------
-# ADMIN — Create
+# ADMIN -- Create
 # ---------------------------------------------------------------------------
 
 @router.post(
@@ -133,32 +164,42 @@ def create_property(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
 ) -> Property:
-    # Resolve slug — auto-generate from title if not provided, ensure uniqueness.
+    # Resolve slug -- auto-generate from title if not provided, ensure uniqueness.
     base_slug = _slugify(payload.slug or payload.title)
     slug = _unique_slug(base_slug, db)
 
-    # Build scalar columns — exclude M2M and the slug (set manually above).
-    data = payload.model_dump(exclude={'amenity_ids', 'slug'})
-    data['slug'] = slug
+    # Build scalar columns only -- exclude M2M fields and virtual fields that
+    # are not columns on the Property table.
+    data = payload.model_dump(exclude={"amenity_ids", "media_urls", "slug"})
+    data["slug"] = slug
 
     prop = Property(**data)
     db.add(prop)
-    db.flush()  # materialise property.id before linking M2M
+    db.flush()  # materialise property.id before linking related rows
 
     # Link amenities via the property_amenities association table.
     if payload.amenity_ids:
-        amenities = list(db.scalars(
-            select(Amenity).where(Amenity.id.in_(payload.amenity_ids))
-        ).all())
+        amenities = list(
+            db.scalars(select(Amenity).where(Amenity.id.in_(payload.amenity_ids))).all()
+        )
         prop.amenities = amenities
 
-    db.commit()
+    # Persist uploaded media URLs as PropertyMedia rows.
+    if payload.media_urls:
+        _insert_media(prop.id, payload.media_urls, db)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     db.refresh(prop)
     return prop
 
 
 # ---------------------------------------------------------------------------
-# ADMIN — Update (partial)
+# ADMIN -- Update (partial)
 # ---------------------------------------------------------------------------
 
 @router.put("/{id}", response_model=PropertyResponse, summary="[Admin] Update a property")
@@ -168,33 +209,87 @@ def update_property(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
 ) -> Property:
-    prop = db.scalars(select(Property).where(Property.id == id)).first()
+    # Eager-load amenities so SQLAlchemy can diff the M2M collection in-memory
+    # without a lazy-load SELECT when we reassign prop.amenities.
+    prop = db.scalars(
+        select(Property)
+        .where(Property.id == id)
+        .options(selectinload(Property.amenities))
+    ).first()
     if prop is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Property not found",
+        )
 
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided for update")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields provided for update",
+        )
 
-    # Check slug uniqueness if being changed
+    # Slug uniqueness guard
     if "slug" in update_data and update_data["slug"] != prop.slug:
-        clash = db.scalars(select(Property).where(Property.slug == update_data["slug"])).first()
+        clash = db.scalars(
+            select(Property).where(Property.slug == update_data["slug"])
+        ).first()
         if clash:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"A property with slug '{update_data['slug']}' already exists",
             )
 
+    # ── Media replacement (delete-then-insert) ─────────────────────────────
+    # Pop media_urls before the scalar loop so setattr() never sees it.
+    if "media_urls" in update_data:
+        media_urls = update_data.pop("media_urls")  # None or List[str]
+        if media_urls is not None:
+            # Delete ALL existing media rows for this property first.
+            db.query(PropertyMedia).filter(
+                PropertyMedia.property_id == prop.id
+            ).delete(synchronize_session="fetch")
+            db.flush()  # flush deletions before inserts to avoid constraint violations
+
+            # Insert the replacement set (empty list = clear all media).
+            if media_urls:
+                _insert_media(prop.id, media_urls, db)
+
+    # ── Amenity M2M replacement ────────────────────────────────────────────
+    # amenity_ids is NOT a column -- pop it before the scalar loop so
+    # setattr() does not attempt to assign a list of UUIDs to a non-existent
+    # column and trigger a SQLAlchemy error.
+    if "amenity_ids" in update_data:
+        amenity_ids = update_data.pop("amenity_ids")  # may be None or []
+        if amenity_ids is not None:
+            # Replace the entire set; [] clears all amenities.
+            new_amenities = (
+                list(
+                    db.scalars(
+                        select(Amenity).where(Amenity.id.in_(amenity_ids))
+                    ).all()
+                )
+                if amenity_ids
+                else []
+            )
+            prop.amenities = new_amenities
+
+    # ── Scalar column updates ──────────────────────────────────────────────
     for field, value in update_data.items():
         setattr(prop, field, value)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
     db.refresh(prop)
     return prop
 
 
 # ---------------------------------------------------------------------------
-# ADMIN — Delete
+# ADMIN -- Delete
 # ---------------------------------------------------------------------------
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT, summary="[Admin] Delete a property")
@@ -205,7 +300,10 @@ def delete_property(
 ) -> None:
     prop = db.scalars(select(Property).where(Property.id == id)).first()
     if prop is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Property not found",
+        )
 
     db.delete(prop)
     db.commit()

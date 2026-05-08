@@ -274,7 +274,7 @@ This resets every admin/agent account to password `Ventures92Admin@2026`.
 | `GET` | `/api/v1/properties/` | Search properties (8 optional filters + pagination) |
 | `GET` | `/api/v1/properties/{slug}` | Property detail — eager-loads media + amenities |
 | `POST` | `/api/v1/properties/` | [Admin] Create property |
-| `PUT` | `/api/v1/properties/{id}` | [Admin] Partial update (toggle status, price, etc.) |
+| `PUT` | `/api/v1/properties/{id}` | [Admin] Partial update — all scalar fields + amenity M2M replacement via `amenity_ids` |
 | `DELETE` | `/api/v1/properties/{id}` | [Admin] Delete property |
 | **Projects** | | |
 | `GET` | `/api/v1/projects/` | List projects (optional `status` filter) |
@@ -298,6 +298,8 @@ This resets every admin/agent account to password `Ventures92Admin@2026`.
 | `GET` | `/api/v1/locations/` | All cities + societies for search dropdowns |
 | **Amenities** | | |
 | `GET` | `/api/v1/amenities/` | All amenities ordered by name — used by PropertyForm for UUID checkbox wiring |
+| **Media Upload** | | |
+| `POST` | `/api/v1/media/upload` | [Admin] Upload image (JPEG/PNG/WebP); returns `{ url, filename, content_type, size_bytes }` |
 
 ### Query parameters — `GET /api/v1/properties/`
 
@@ -322,6 +324,8 @@ This resets every admin/agent account to password `Ventures92Admin@2026`.
 | `schemas/location.py` | `LocationResponse` |
 | `schemas/project.py` | *(inline in endpoint)* `MilestoneCreate`, `MilestoneResponse`, `ProjectDetailResponse` |
 | `schemas/lead.py` | *(inline in endpoint)* `LeadStatusUpdate`, `InteractionCreate`, `InteractionResponse`, `LeadDetailResponse` |
+| `schemas/auth.py` | `SignupRequest`, `SignupResponse` (added); `PUBLIC_SIGNUP_ROLES` frozenset |
+| `endpoints/media.py` | `MediaUploadResponse` — inline response schema for the upload endpoint |
 
 ### Conventions (MUST follow when adding endpoints)
 
@@ -536,9 +540,11 @@ frontend/
     contact/
       page.tsx                # Lead capture — two-column layout, trust grid, contact details
     login/
-      page.tsx                # "use client" — split-screen auth, email+password, mock → /admin/dashboard
+      page.tsx                # "use client" — split-screen auth, real login() call, role-gated redirect
     signup/
-      page.tsx                # "use client" — split-screen auth, name+email+password, mock → /admin/dashboard
+      page.tsx                # "use client" — split-screen auth, real signup() call, INVESTOR/BUYER_TENANT only
+    profile/
+      page.tsx                # Async RSC — authenticated profile for INVESTOR/BUYER_TENANT; admin roles redirect
   components/
     HeroSection.tsx           # Full-viewport hero, architectural gradient, native GET search bar
     CorporatePartners.tsx     # Async Server Component — CSS marquee carousel, getPartners(), logo/name fallback
@@ -549,7 +555,8 @@ frontend/
     SearchFilters.tsx         # "use client" — URL-driven filter bar (type/category/location/price); locations prop from server
     admin/
       LeadKanban.tsx          # "use client" — 4-column Kanban, fetch on mount, optimistic status moves
-      PropertyForm.tsx        # "use client" — right-side slide-over, 3-section form, createProperty()
+      PropertyForm.tsx        # "use client" — slide-over, create + edit modes, image upload, amenity checkboxes
+    AuthNav.tsx               # "use client" — auth-aware navbar slot: Login link OR avatar+logout button
     ProjectCard.tsx           # Server Component — luxury development card, status badge, gradient placeholder
     MilestoneTimeline.tsx     # Server Component — vertical timeline, completed/upcoming node states, progress bars
   services/
@@ -640,8 +647,8 @@ Both pages share an identical split-screen layout pattern:
 - **Password field**: `type` toggles `"password"` / `"text"` via `showPassword` state; EyeIcon / EyeOffIcon button absolutely positioned at right.
 - **Mock submit**: `setTimeout(700ms)` then `router.push('/admin/dashboard')`. Replace with real auth call when backend is ready.
 - **Login extras**: "Forgot password?" link aligned right of label; divider + "Create an Account" ghost button below form; link to `/signup`.
-- **Signup extras**: name fields in 2-col grid; password hint text; custom styled checkbox for terms agreement; link to `/login`.
-- **No real auth logic** — state is ephemeral, no tokens stored. Auth implementation is a future phase.
+- **Signup extras**: name fields in 2-col grid; phone field; role selector (INVESTOR/BUYER_TENANT); password hint text; terms checkbox; link to `/login`.
+- Both pages call real API endpoints — `login()` and `signup()` from `authService.ts`. No mock logic.
 
 ### Contact / Lead Capture — `app/contact/page.tsx`
 
@@ -986,6 +993,7 @@ Middleware silently rotates expired access cookies using the refresh cookie.
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `POST` | `/auth/signup` | public self-registration — INVESTOR or BUYER_TENANT only; issues cookies immediately |
 | `POST` | `/auth/login` | email + password → sets `v92_access` + `v92_refresh` HttpOnly cookies |
 | `POST` | `/auth/logout` | clears auth cookies |
 | `GET`  | `/auth/me` | returns current authenticated user (used for SSR rehydration) |
@@ -1002,6 +1010,9 @@ gates cookie *presence*; the layout's `getAdminUserOrNull()` is the role gate.
 ### Security hardening
 
 - **bcrypt cost 12** — matches all seeded hashes; verified by `passlib`.
+- **Signup role guard** — `POST /auth/signup` enforces INVESTOR/BUYER_TENANT at the Pydantic schema level (`Literal` type + `field_validator`) AND again at the endpoint level. SUPER_ADMIN/AGENT creation via the public API is impossible regardless of the request body.
+- **Signup 409 on duplicate email** — application-level check before DB write returns a clean 409 instead of an unhandled `IntegrityError`.
+- **Media upload auth** — `POST /media/upload` requires `require_admin` (SUPER_ADMIN or AGENT). MIME type validated against allowlist before any disk write.
 - **Account lockout** — `MAX_FAILED_LOGIN_ATTEMPTS=5` failures → lock for `LOCKOUT_MINUTES=15`. Successful login zeroes both counters and stamps `last_login_at`.
 - **Timing-equivalent failures** — login runs a dummy `verify_password` when the email is unknown so response time leaks no enumeration signal.
 - **Reset tokens** — the raw token is delivered once via email/log; only its SHA-256 hex is persisted in `users.password_reset_token_hash`. Tokens expire after `PASSWORD_RESET_EXPIRE_MINUTES=30`.
@@ -1024,6 +1035,14 @@ gates cookie *presence*; the layout's `getAdminUserOrNull()` is the role gate.
 | `COOKIE_SAMESITE` | `lax` | |
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | |
 | `FRONTEND_URL` | `http://localhost:3000` | used inside reset-password emails |
+
+### Media upload env vars (configure in `.env`)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `UPLOAD_DIR` | `/app/static/uploads` | Absolute path inside the container where files are written |
+| `STATIC_BASE_URL` | `http://localhost:8000` | Base URL prepended to the returned file path; set to your public hostname in production |
+| `MAX_UPLOAD_SIZE_BYTES` | `10485760` (10 MB) | Hard cap per upload; returns 413 if exceeded |
 
 ### Dev login credentials (seeded)
 
@@ -1073,3 +1092,150 @@ curl -b auth.txt -c auth.txt -X POST http://localhost:8000/api/v1/auth/logout
 3. Sign in with the new password.
 
 **Swagger UI** (`/api/docs`): the `Authorize` button accepts the access JWT as a Bearer token (auth dependencies fall back to `Authorization: Bearer …` when no cookie is present).
+
+---
+
+## Frontend — Integration Changelog (Phase Integration)
+
+### Phase 1 — Signup Page (already wired)
+
+`app/signup/page.tsx` — no mock logic. Calls `signup()` from `services/authService.ts`
+which hits `POST /api/v1/auth/signup`. Backend sets HttpOnly cookies on success.
+Role selector is limited to `INVESTOR` and `BUYER_TENANT` only — admin roles are
+excluded at both schema (`PublicSignupRole`) and UI levels.
+
+### Phase 2 — Navbar Login Button
+
+`app/layout.tsx` — the public navbar now renders a **Login** ghost button (gold
+outline, `border: 1px solid #4d4637`) immediately to the left of **Book Consultation**.
+Both are wrapped in a `hidden md:flex items-center gap-3` div, keeping the mobile
+layout unchanged.
+
+### Phase 3 — Project Detail Page Crash Fix
+
+`app/projects/[slug]/page.tsx` — added defensive guards:
+
+- `const milestones = project.milestones ?? [];` — prevents crash if the API omits
+  the `milestones` key on future schema changes.
+- `STATUS_CONFIG[project.status] ?? STATUS_CONFIG['PLANNING']` — fallback for any
+  unexpected status value returned by the API.
+- All JSX references to `project.milestones` replaced with the local `milestones`
+  variable so the guard is applied consistently.
+
+### Phase 4 — Property Media Upload
+
+`services/propertyService.ts` additions:
+
+| Export | Description |
+|---|---|
+| `MediaUploadResponse` | `{ url, filename, content_type, size_bytes }` |
+| `uploadPropertyMedia(file)` | `POST /api/v1/media/upload` via native `fetch` with `FormData` (no JSON); browser sets multipart boundary automatically. Always runs client-side (`NEXT_PUBLIC_API_URL`). |
+| `PropertyUpdatePayload` | All fields optional — mirrors `PUT /api/v1/properties/{id}` partial-update contract. |
+| `updateProperty(id, data)` | `PUT /api/v1/properties/{id}` |
+
+`components/admin/PropertyForm.tsx` — new **Property Images** section (Section 3):
+
+- Hidden `<input type="file" accept="image/jpeg,image/png,image/webp" multiple>` triggered
+  by a styled dashed-border button.
+- Selected files are shown in a `3-col` preview grid (`16:9` aspect ratio per tile).
+- Each tile shows uploading spinner, green ✓ badge on success, red error overlay on failure.
+- On form submit, images upload **sequentially** before the property create/update call.
+  Collected URLs are passed as `media_urls` in the property payload.
+- Individual images can be removed at any time (except while uploading).
+- Object URLs are revoked on removal to avoid memory leaks.
+
+### Phase 5 — Property Edit Mode
+
+`components/admin/PropertyForm.tsx`:
+
+- New optional `property?: Property` prop. When provided, the form opens in edit mode.
+- `initialFormState(p?)` helper pre-fills all form fields from the existing property.
+- Existing amenities (from `PropertyDetail.amenities`) are pre-selected on mount.
+- Panel header, submit button label, and submitting spinner text switch between
+  "Add New Property / Publish Property" ↔ "Edit Property / Save Changes".
+- On submit in edit mode: calls `updateProperty(property.id, payload)` instead of
+  `createProperty`.
+
+`app/admin/properties/page.tsx`:
+
+- New `editingProperty: Property | null` state.
+- **Edit** button added per row (gold-muted outline, between View and Delete).
+- Clicking Edit sets `editingProperty` and opens the form.
+- `handleFormSuccess` now handles both create (prepend) and update (in-place replace)
+  via `findIndex` — no full refetch needed.
+- Form `onClose` resets `editingProperty` back to `null`.
+
+### Phase 6 — Mobile Responsiveness Fixes
+
+`components/admin/PropertyForm.tsx`:
+
+- Panel width changed from `width: '600px'` (fixed) to `width: '100%', maxWidth: '600px'`
+  — panel is full-width on phones and capped at 600 px on desktop.
+
+`app/admin/properties/page.tsx`:
+
+- Outer table wrapper now has `width: '100%', overflowX: 'auto'` — the inner grid
+  (`minWidth: '780px'`) scrolls horizontally on narrow viewports instead of overflowing.
+
+### Phase 7 — Dynamic Auth Navbar + Profile Page
+
+#### `components/AuthNav.tsx` (`"use client"`)
+
+New client component that renders the right side of the navbar based on the server-resolved user:
+
+- `user === null` → renders a "Login" link (`href="/login"`, gold outline border).
+- `user !== null` → renders a gold-initial avatar "Profile" link (`href="/profile"`) + "Logout" button.
+- Logout: calls `logout()` from `authService`, then `router.refresh()` + `router.push('/')` to clear server state and navigate home.
+- `loggingOut` state dims the logout button and shows a spinner during the async call.
+- Swallowed errors on logout (cookies may already be expired) — navigation still proceeds.
+
+#### `app/layout.tsx` — auth-aware Navbar
+
+- `Navbar` function is now `async` and calls `getCurrentUser().catch(() => null)` server-side.
+- Passes `user` to `<AuthNav user={user} />`, which is the only interactive element in the navbar.
+- "Login" static link replaced by `<AuthNav>` — `<AuthNav>` renders the Login link itself when unauthenticated.
+- "Book Consultation" CTA remains static, to the right of `<AuthNav>`.
+
+#### `app/profile/page.tsx`
+
+- Async Server Component — no `"use client"`.
+- Calls `getCurrentUser()` — redirects to `/login` if unauthenticated.
+- Redirects to `/login` for `SUPER_ADMIN` and `AGENT` roles (they belong in `/admin/dashboard`).
+- **Layout**: two-column `lg:grid-cols-[320px_1fr]` — left avatar/role card, right details + security cards.
+- Avatar: gold-outlined square showing user initials in Epilogue 800.
+- Role badge: `INVESTOR` → "Investor", `BUYER_TENANT` → "Buyer / Tenant".
+- Account details card: rows for First Name, Last Name, Email, Account Type.
+- Security card: placeholder "Change Password" CTA (disabled, `cursor: not-allowed`) — logic is a future phase.
+
+### Phase 8 — Media Upload → Database Linking Fix
+
+#### `backend/app/schemas/property.py`
+
+- `PropertyCreate` gains: `media_urls: Optional[List[str]] = None`
+- `PropertyUpdate` gains: `media_urls: Optional[List[str]] = None`
+- Comments explain the replace-strategy semantics for the update case.
+
+#### `backend/app/api/v1/endpoints/properties.py`
+
+- Imports `PropertyMedia` from `app.models.property` and `MediaType` from `app.models.enums`.
+- New helper `_insert_media(property_id, urls, db)`: iterates the URL list; index 0 → `is_primary=True`, remaining → False; `sort_order = index`.
+- **CREATE**: `media_urls` excluded from `model_dump` so it is never passed as a column. After `db.flush()`, calls `_insert_media` if `payload.media_urls` is non-empty. Wrapped in try/except with `db.rollback()` on failure.
+- **UPDATE**: `media_urls` popped from `update_data` before scalar loop. If not None: `DELETE` all existing `PropertyMedia` rows via `db.query(...).filter(...).delete(synchronize_session="fetch")`, then flush, then `_insert_media` for the new set. Wrapped in try/except with `db.rollback()`.
+- **LIST endpoint** now eager-loads `Property.media` via `selectinload` so `PropertyCard` receives media on list pages.
+
+#### `services/propertyService.ts`
+
+- `Property` interface gains `media?: PropertyMedia[]` (optional) — present when the backend eager-loads it (list + detail endpoints). Callers that don't need media are unaffected.
+
+### Phase 9 — PropertyCard Image Rendering Fix
+
+#### `components/PropertyCard.tsx`
+
+- New `resolvePrimaryImageUrl(property)` helper:
+  1. Returns `undefined` if `property.media` is empty or absent.
+  2. Returns the URL of the item where `is_primary === true`.
+  3. Falls back to `media[0].media_url` if no item is explicitly primary.
+- `imageUrl` prop is kept for backward compat but deprecated; `property.media` takes precedence.
+- `resolvedImageUrl = resolvePrimaryImageUrl(property) ?? imageUrl`.
+- JSX now uses a clean ternary: `resolvedImageUrl` → `<SafeImage>` with `<BuildingIcon>` fallback on error; no URL → `<BuildingIcon>` placeholder immediately.
+- Removed the now-redundant `{!imageUrl && <BuildingIcon>}` duplicate render.

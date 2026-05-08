@@ -72,6 +72,7 @@ export default function AdminPropertiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -113,12 +114,28 @@ export default function AdminPropertiesPage() {
     }
   }, [router]);
 
-  const handleFormSuccess = useCallback((newProp: Property) => {
-    setProperties((prev) => [newProp, ...prev]);
+  const handleFormSuccess = useCallback((savedProp: Property) => {
+    setProperties((prev) => {
+      const idx = prev.findIndex((p) => p.id === savedProp.id);
+      if (idx !== -1) {
+        // Edit: replace existing row in-place
+        const updated = [...prev];
+        updated[idx] = savedProp;
+        return updated;
+      }
+      // Create: prepend new row
+      return [savedProp, ...prev];
+    });
+    setEditingProperty(null);
     setActionError(null);
     // Invalidate RSC cache so /properties + homepage feature grid update.
     router.refresh();
   }, [router]);
+
+  const handleEdit = useCallback((property: Property) => {
+    setEditingProperty(property);
+    setShowForm(true);
+  }, []);
 
   // Stats
   const available = properties.filter((p) => p.availability_status === 'AVAILABLE').length;
@@ -171,7 +188,7 @@ export default function AdminPropertiesPage() {
           </div>
 
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setEditingProperty(null); setShowForm(true); }}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -270,6 +287,8 @@ export default function AdminPropertiesPage() {
             className="admin-table-wrap"
             style={{
               border: '1px solid #4d4637',
+              width: '100%',
+              overflowX: 'auto',
             }}
           >
             <div style={{ minWidth: '780px' }}>
@@ -459,6 +478,14 @@ export default function AdminPropertiesPage() {
                             View
                           </a>
                           <button
+                            onClick={() => handleEdit(p)}
+                            disabled={isDeleting}
+                            style={actionBtnStyle('#99907e', 'transparent')}
+                            title="Edit property"
+                          >
+                            Edit
+                          </button>
+                          <button
                             onClick={() => setConfirmDeleteId(p.id)}
                             disabled={isDeleting}
                             style={actionBtnStyle('#4d4637', 'transparent')}
@@ -481,8 +508,9 @@ export default function AdminPropertiesPage() {
       {/* ── Slide-over form ──────────────────────────────────────── */}
       {showForm && (
         <PropertyForm
-          onClose={() => setShowForm(false)}
+          onClose={() => { setShowForm(false); setEditingProperty(null); }}
           onSuccess={handleFormSuccess}
+          property={editingProperty ?? undefined}
         />
       )}
     </>

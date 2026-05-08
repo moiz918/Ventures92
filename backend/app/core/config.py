@@ -41,6 +41,22 @@ class Settings(BaseSettings):
     # Public site URL — used inside reset-password emails
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # ── Media / File Upload ─────────────────────────────────────────────────
+    # Absolute path (inside the container) where uploaded files are stored.
+    # The directory is created at startup if it does not already exist.
+    UPLOAD_DIR: str = "/app/static/uploads"
+
+    # Base URL prefix used when building the public URL returned by the upload
+    # endpoint.  Override with the public hostname in production.
+    # e.g. "https://cdn.ventures92.com" or "https://api.ventures92.com"
+    STATIC_BASE_URL: str = "http://localhost:8000"
+
+    # Allowed MIME types for uploaded media files
+    ALLOWED_UPLOAD_MIME_TYPES: List[str] = ["image/jpeg", "image/png", "image/webp"]
+
+    # Maximum upload file size in bytes (default: 10 MB)
+    MAX_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
+
     @property
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
